@@ -8,6 +8,12 @@ const CANVAS_PRESETS = {
   custom: { label: 'Custom', width: 1200, height: 630 }
 };
 
+const EXPORT_FORMATS = {
+  png: { label: 'PNG', type: 'image/png', extension: 'png' },
+  jpeg: { label: 'JPEG', type: 'image/jpeg', extension: 'jpg' },
+  webp: { label: 'WebP', type: 'image/webp', extension: 'webp' }
+};
+
 const DEFAULTS = {
   url: 'https://example.com',
   mode: 'solid',
@@ -22,11 +28,14 @@ const DEFAULTS = {
   canvasHeight: 630,
   browserWidth: 980,
   browserHeight: 560,
+  zoom: 1,
   padding: 48,
   radius: 20,
   shadow: 38,
   frameStyle: 'mac-dark',
-  showUrlBar: true
+  showUrlBar: true,
+  exportFormat: 'png',
+  exportQuality: 0.92
 };
 
 function parseUrlState() {
@@ -42,21 +51,27 @@ function parseUrlState() {
 }
 
 function getBgStyle(state) {
-  if (state.mode === 'solid') {
-    return { background: state.bgSolid };
-  }
-  const stops = state.gradientStops === 3
-    ? `${state.bgA} 0%, ${state.bgB} 50%, ${state.bgC} 100%`
-    : `${state.bgA} 0%, ${state.bgB} 100%`;
+  if (state.mode === 'solid') return { background: state.bgSolid };
+
+  const stops =
+    state.gradientStops === 3
+      ? `${state.bgA} 0%, ${state.bgB} 50%, ${state.bgC} 100%`
+      : `${state.bgA} 0%, ${state.bgB} 100%`;
   return { background: `linear-gradient(${state.gradientAngle}deg, ${stops})` };
 }
 
 function App() {
   const [state, setState] = useState(parseUrlState);
-  const [status, setStatus] = useState('Live preview enabled. Resize your browser to see it adapt.');
+  const [status, setStatus] = useState('Preview is ready. Adjust zoom and export a direct image file.');
   const [error, setError] = useState('');
-  const [previewLayout, setPreviewLayout] = useState({ canvasWidth: state.canvasWidth, canvasHeight: state.canvasHeight, frameWidth: state.browserWidth, frameHeight: state.browserHeight, frameOffsetX: 0, frameOffsetY: 0 });
-  const [captureBlob, setCaptureBlob] = useState(null);
+  const [previewLayout, setPreviewLayout] = useState({
+    canvasWidth: state.canvasWidth,
+    canvasHeight: state.canvasHeight,
+    frameWidth: state.browserWidth,
+    frameHeight: state.browserHeight,
+    frameOffsetX: 0,
+    frameOffsetY: 0
+  });
   const viewportRef = useRef(null);
 
   useEffect(() => {
@@ -114,7 +129,9 @@ function App() {
       pageBg: dark ? '#0b1120' : '#ffffff',
       urlPill: dark ? '#374151' : '#ffffff',
       urlText: dark ? '#9ca3af' : '#64748b',
-      border: dark ? '1px solid #0f172a' : '1px solid #cbd5e1'
+      border: dark ? '#0f172a' : '#cbd5e1',
+      placeholderTitle: dark ? '#e2e8f0' : '#0f172a',
+      placeholderText: dark ? '#94a3b8' : '#475569'
     };
   }, [state.frameStyle]);
 
@@ -132,86 +149,156 @@ function App() {
 
   const applyUrl = () => {
     setError('');
-    setStatus(`Live page loaded: ${state.url}`);
+    setStatus(`Loaded ${state.url}. Export renders straight to a downloadable image file.`);
   };
 
-  const captureCurrentView = async () => {
+  const roundedRect = (ctx, x, y, w, h, r) => {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y + rr);
+    ctx.quadraticCurveTo(x, y, x + rr, y);
+    ctx.closePath();
+  };
+
+  const exportFrame = async () => {
     setError('');
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'never' },
-        audio: false
-      });
-      const [track] = stream.getVideoTracks();
-      const imageCapture = new ImageCapture(track);
-      const bitmap = await imageCapture.grabFrame();
 
-      const canvas = document.createElement('canvas');
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(bitmap, 0, 0);
+    const fmt = EXPORT_FORMATS[state.exportFormat] || EXPORT_FORMATS.png;
+    const { canvasWidth, canvasHeight, browserWidth, browserHeight, padding, radius, showUrlBar, zoom } = state;
+    const urlBarHeight = showUrlBar ? 52 : 34;
+    const contentWidth = Math.max(120, canvasWidth - padding * 2);
+    const contentHeight = Math.max(120, canvasHeight - padding * 2);
+    const frameScale = Math.min(contentWidth / browserWidth, contentHeight / browserHeight);
+    const frameW = browserWidth * frameScale;
+    const frameH = browserHeight * frameScale;
+    const frameX = (canvasWidth - frameW) / 2;
+    const frameY = (canvasHeight - frameH) / 2;
 
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 0.95));
-      stream.getTracks().forEach((t) => t.stop());
-      if (!blob) throw new Error('Could not create image blob from capture.');
-      setCaptureBlob(blob);
-      setStatus('Capture ready. Use download options below.');
-    } catch (e) {
-      setError('Screen capture was cancelled or blocked by the browser.');
-    }
-  };
-
-  const downloadCapture = (type) => {
-    if (!captureBlob) {
-      setError('Capture an image first, then download it.');
-      return;
-    }
-    const fileName = type === 'image/jpeg' ? 'framelab-capture.jpg' : 'framelab-capture.png';
-    if (type === captureBlob.type) {
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(captureBlob);
-      link.download = fileName;
-      link.click();
-      URL.revokeObjectURL(link.href);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setError('Canvas rendering is not available in this browser.');
       return;
     }
 
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      canvas.toBlob((blob) => {
-        if (!blob) return;
+    if (state.mode === 'solid') {
+      ctx.fillStyle = state.bgSolid;
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    } else {
+      const angle = (state.gradientAngle * Math.PI) / 180;
+      const cx = canvasWidth / 2;
+      const cy = canvasHeight / 2;
+      const length = Math.hypot(canvasWidth, canvasHeight) / 2;
+      const x0 = cx - Math.cos(angle) * length;
+      const y0 = cy - Math.sin(angle) * length;
+      const x1 = cx + Math.cos(angle) * length;
+      const y1 = cy + Math.sin(angle) * length;
+      const gradient = ctx.createLinearGradient(x0, y0, x1, y1);
+      gradient.addColorStop(0, state.bgA);
+      if (state.gradientStops === 3) gradient.addColorStop(0.5, state.bgB);
+      gradient.addColorStop(1, state.gradientStops === 3 ? state.bgC : state.bgB);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    }
+
+    ctx.shadowColor = 'rgba(2, 6, 23, 0.38)';
+    ctx.shadowBlur = state.shadow;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = Math.round(state.shadow / 6);
+    ctx.fillStyle = frameTheme.shell;
+    roundedRect(ctx, frameX, frameY, frameW, frameH, radius);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.strokeStyle = frameTheme.border;
+    ctx.lineWidth = 2;
+    roundedRect(ctx, frameX, frameY, frameW, frameH, radius);
+    ctx.stroke();
+
+    ctx.fillStyle = frameTheme.shell;
+    roundedRect(ctx, frameX, frameY, frameW, urlBarHeight, Math.max(6, radius - 2));
+    ctx.fill();
+
+    const dotY = frameY + 20;
+    [ '#fb7185', '#facc15', '#4ade80' ].forEach((color, i) => {
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.arc(frameX + 18 + i * 14, dotY, 5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    if (showUrlBar) {
+      const pillX = frameX + 70;
+      const pillY = frameY + 11;
+      const pillW = frameW - 85;
+      const pillH = 22;
+      ctx.fillStyle = frameTheme.urlPill;
+      roundedRect(ctx, pillX, pillY, pillW, pillH, 7);
+      ctx.fill();
+      ctx.font = `${Math.max(11, Math.floor(frameW / 55))}px Inter, system-ui, sans-serif`;
+      ctx.fillStyle = frameTheme.urlText;
+      ctx.fillText(state.url.replace(/^https?:\/\//, ''), pillX + 10, pillY + 15);
+    }
+
+    const bodyX = frameX;
+    const bodyY = frameY + urlBarHeight;
+    const bodyW = frameW;
+    const bodyH = frameH - urlBarHeight;
+    ctx.fillStyle = frameTheme.pageBg;
+    ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
+
+    ctx.fillStyle = frameTheme.placeholderTitle;
+    ctx.font = `600 ${Math.max(16, Math.floor(bodyW / 28))}px Inter, system-ui, sans-serif`;
+    ctx.fillText('Export-ready browser frame', bodyX + 24, bodyY + 56);
+    ctx.fillStyle = frameTheme.placeholderText;
+    ctx.font = `${Math.max(13, Math.floor(bodyW / 42))}px Inter, system-ui, sans-serif`;
+    ctx.fillText(`URL: ${state.url}`, bodyX + 24, bodyY + 88);
+    ctx.fillText(`Page zoom: ${zoom.toFixed(2)}x`, bodyX + 24, bodyY + 114);
+    ctx.fillText(`Tip: cross-origin live pages stay interactive in preview but cannot be embedded in exported pixels.`, bodyX + 24, bodyY + 142);
+
+    const quality = fmt.type === 'image/png' ? undefined : state.exportQuality;
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setError('Export failed while generating the image file.');
+          return;
+        }
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = fileName;
+        link.download = `framelab-export.${fmt.extension}`;
         link.click();
         URL.revokeObjectURL(link.href);
-      }, type, 0.92);
-      URL.revokeObjectURL(img.src);
-    };
-    img.src = URL.createObjectURL(captureBlob);
+        setStatus(`Downloaded ${fmt.label} export (${canvasWidth}×${canvasHeight}).`);
+      },
+      fmt.type,
+      quality
+    );
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 px-4 py-3 md:px-6">
+      <header className="border-b border-slate-800 px-4 py-4 md:px-6">
         <h1 className="text-xl font-semibold">FrameLab</h1>
-        <p className="text-sm text-slate-400">Live browser-frame previews that auto-resize with the window.</p>
+        <p className="text-sm text-slate-400">Design social-ready browser frames with direct PNG/JPEG/WebP export.</p>
       </header>
 
       <main className="mx-auto grid max-w-7xl gap-4 p-4 md:grid-cols-[390px_1fr] md:p-6">
-        <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+        <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/70 p-4 md:sticky md:top-4 md:h-[calc(100vh-2rem)] md:overflow-auto">
           <Control label="Website URL">
             <div className="flex gap-2">
               <input className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" value={state.url} onChange={(e) => setField('url', e.target.value)} />
-              <button className="rounded-lg bg-indigo-500 px-3 text-sm font-medium hover:bg-indigo-400" onClick={applyUrl}>
-                Load
-              </button>
+              <button className="rounded-lg bg-indigo-500 px-3 text-sm font-medium hover:bg-indigo-400" onClick={applyUrl}>Load</button>
             </div>
           </Control>
 
@@ -237,6 +324,13 @@ function App() {
             <NumberField label="Radius" value={state.radius} onChange={(v) => setField('radius', v)} />
           </TwoCols>
           <NumberField label="Shadow blur" value={state.shadow} onChange={(v) => setField('shadow', v)} />
+
+          <Control label="Page zoom (preview)">
+            <div className="flex items-center gap-3">
+              <input type="range" min={0.5} max={2} step={0.05} value={state.zoom} className="w-full" onChange={(e) => setField('zoom', Number(e.target.value))} />
+              <span className="w-14 text-right font-mono text-sm">{state.zoom.toFixed(2)}x</span>
+            </div>
+          </Control>
 
           <Control label="Frame style">
             <select className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" value={state.frameStyle} onChange={(e) => setField('frameStyle', e.target.value)}>
@@ -274,13 +368,18 @@ function App() {
             </div>
           </Control>
 
-          <Control label="Image download options">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <button className="rounded-lg bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700" onClick={captureCurrentView}>Capture screen</button>
-              <button className="rounded-lg bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700" onClick={() => downloadCapture('image/png')}>Download PNG</button>
-              <button className="rounded-lg bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700" onClick={() => downloadCapture('image/jpeg')}>Download JPG</button>
-            </div>
-            <p className="mt-1 text-xs text-slate-400">Capture uses your browser's built-in screen sharing dialog, then enables PNG/JPG downloads.</p>
+          <Control label="Export">
+            <TwoCols>
+              <label className="block space-y-1 text-sm">
+                <span className="text-slate-300">Format</span>
+                <select className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" value={state.exportFormat} onChange={(e) => setField('exportFormat', e.target.value)}>
+                  {Object.entries(EXPORT_FORMATS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
+                </select>
+              </label>
+              <NumberField label="Quality (0-1)" value={state.exportQuality} onChange={(v) => setField('exportQuality', Math.max(0.1, Math.min(1, v)))} />
+            </TwoCols>
+            <button className="mt-2 w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium hover:bg-emerald-400" onClick={exportFrame}>Download image</button>
+            <p className="mt-2 text-xs text-slate-400">No browser screen-share or capture permission needed.</p>
           </Control>
 
           <p className="text-sm text-slate-300">{status}</p>
@@ -288,7 +387,7 @@ function App() {
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-3" style={getBgStyle(state)}>
-          <div ref={viewportRef} className="h-[70vh] min-h-[420px] w-full overflow-hidden rounded-lg p-3">
+          <div ref={viewportRef} className="h-[75vh] min-h-[420px] w-full overflow-hidden rounded-lg p-3">
             <div className="relative mx-auto" style={{ width: `${previewLayout.canvasWidth}px`, height: `${previewLayout.canvasHeight}px` }}>
               <div
                 className="absolute overflow-hidden"
@@ -300,47 +399,33 @@ function App() {
                   borderRadius: `${state.radius}px`,
                   boxShadow: `0 ${Math.round(state.shadow / 6)}px ${state.shadow}px rgba(2, 6, 23, 0.38)`,
                   backgroundColor: frameTheme.shell,
-                  border: frameTheme.border
+                  border: `1px solid ${frameTheme.border}`
                 }}
               >
-                <div
-                  style={{
-                    height: state.showUrlBar ? '52px' : '34px',
-                    backgroundColor: frameTheme.shell,
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '0 16px',
-                    gap: '12px'
-                  }}
-                >
+                <div style={{ height: state.showUrlBar ? '52px' : '34px', backgroundColor: frameTheme.shell, display: 'flex', alignItems: 'center', padding: '0 16px', gap: '12px' }}>
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
                     <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
                     <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
                   </div>
                   {state.showUrlBar && (
-                    <div
-                      className="truncate rounded-md px-3 py-1 text-sm"
-                      style={{
-                        width: '100%',
-                        backgroundColor: frameTheme.urlPill,
-                        color: frameTheme.urlText
-                      }}
-                    >
+                    <div className="truncate rounded-md px-3 py-1 text-sm" style={{ width: '100%', backgroundColor: frameTheme.urlPill, color: frameTheme.urlText }}>
                       {state.url.replace(/^https?:\/\//, '')}
                     </div>
                   )}
                 </div>
-                <div style={{ height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg }}>
-                  <iframe
-                    key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
-                    title="Live site preview"
-                    src={state.url}
-                    className="h-full w-full border-0"
-                    loading="eager"
-                    referrerPolicy="no-referrer"
-                    sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
-                  />
+                <div style={{ height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg, overflow: 'hidden' }}>
+                  <div style={{ width: `${100 / state.zoom}%`, height: `${100 / state.zoom}%`, transform: `scale(${state.zoom})`, transformOrigin: 'top left' }}>
+                    <iframe
+                      key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
+                      title="Live site preview"
+                      src={state.url}
+                      className="h-full w-full border-0"
+                      loading="eager"
+                      referrerPolicy="no-referrer"
+                      sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -364,13 +449,7 @@ function NumberField({ label, value, onChange }) {
   return (
     <label className="block space-y-1 text-sm">
       <span className="text-slate-300">{label}</span>
-      <input
-        type="number"
-        value={value}
-        min={0}
-        className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2"
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
+      <input type="number" value={value} min={0} className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" onChange={(e) => onChange(Number(e.target.value))} />
     </label>
   );
 }
