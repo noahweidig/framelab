@@ -85,6 +85,14 @@ function normalizeUrl(input) {
 
 async function loadSnapshotWithFallbacks(url, signal) {
   const providers = [
+    async () => {
+      const backendRes = await fetch(
+        `/api/snapshot?url=${encodeURIComponent(url)}&w=1600&h=900`,
+        { signal }
+      );
+      if (!backendRes.ok) throw new Error(`Backend snapshot returned ${backendRes.status}`);
+      return createImageBitmap(await backendRes.blob());
+    },
     () => loadRemoteSnapshot(url, signal),
     async () => {
       const res = await fetch(
