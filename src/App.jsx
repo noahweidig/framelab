@@ -38,6 +38,16 @@ const DEFAULTS = {
   exportQuality: 0.92
 };
 
+async function loadRemoteSnapshot(url) {
+  const endpoint = `https://image.thum.io/get/width/1600/noanimate/${encodeURIComponent(url)}`;
+  const response = await fetch(endpoint, { mode: 'cors' });
+  if (!response.ok) {
+    throw new Error(`Snapshot service returned ${response.status}`);
+  }
+  const blob = await response.blob();
+  return createImageBitmap(blob);
+}
+
 function parseUrlState() {
   const params = new URLSearchParams(window.location.search);
   const parsed = { ...DEFAULTS };
@@ -258,14 +268,45 @@ function App() {
     ctx.fillStyle = frameTheme.pageBg;
     ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
 
-    ctx.fillStyle = frameTheme.placeholderTitle;
-    ctx.font = `600 ${Math.max(16, Math.floor(bodyW / 28))}px Inter, system-ui, sans-serif`;
-    ctx.fillText('Export-ready browser frame', bodyX + 24, bodyY + 56);
-    ctx.fillStyle = frameTheme.placeholderText;
-    ctx.font = `${Math.max(13, Math.floor(bodyW / 42))}px Inter, system-ui, sans-serif`;
-    ctx.fillText(`URL: ${state.url}`, bodyX + 24, bodyY + 88);
-    ctx.fillText(`Page zoom: ${zoom.toFixed(2)}x`, bodyX + 24, bodyY + 114);
-    ctx.fillText(`Tip: cross-origin live pages stay interactive in preview but cannot be embedded in exported pixels.`, bodyX + 24, bodyY + 142);
+    let drewSnapshot = false;
+    try {
+      const snapshot = await loadRemoteSnapshot(state.url);
+      const snapshotRatio = snapshot.width / snapshot.height;
+      const targetRatio = bodyW / bodyH;
+      let drawW = bodyW;
+      let drawH = bodyH;
+      let drawX = bodyX;
+      let drawY = bodyY;
+
+      if (snapshotRatio > targetRatio) {
+        drawW = bodyH * snapshotRatio;
+        drawX = bodyX - (drawW - bodyW) / 2;
+      } else {
+        drawH = bodyW / snapshotRatio;
+        drawY = bodyY - (drawH - bodyH) / 2;
+      }
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(bodyX, bodyY, bodyW, bodyH);
+      ctx.clip();
+      ctx.drawImage(snapshot, drawX, drawY, drawW, drawH);
+      ctx.restore();
+      drewSnapshot = true;
+    } catch {
+      drewSnapshot = false;
+    }
+
+    if (!drewSnapshot) {
+      ctx.fillStyle = frameTheme.placeholderTitle;
+      ctx.font = `600 ${Math.max(16, Math.floor(bodyW / 28))}px Inter, system-ui, sans-serif`;
+      ctx.fillText('Export-ready browser frame', bodyX + 24, bodyY + 56);
+      ctx.fillStyle = frameTheme.placeholderText;
+      ctx.font = `${Math.max(13, Math.floor(bodyW / 42))}px Inter, system-ui, sans-serif`;
+      ctx.fillText(`URL: ${state.url}`, bodyX + 24, bodyY + 88);
+      ctx.fillText(`Page zoom: ${zoom.toFixed(2)}x`, bodyX + 24, bodyY + 114);
+      ctx.fillText('Could not load a remote snapshot for this site during export.', bodyX + 24, bodyY + 142);
+    }
 
     const quality = fmt.type === 'image/png' ? undefined : state.exportQuality;
     canvas.toBlob(
@@ -279,7 +320,11 @@ function App() {
         link.download = `framelab-export.${fmt.extension}`;
         link.click();
         URL.revokeObjectURL(link.href);
-        setStatus(`Downloaded ${fmt.label} export (${canvasWidth}×${canvasHeight}).`);
+        setStatus(
+          drewSnapshot
+            ? `Downloaded ${fmt.label} export (${canvasWidth}×${canvasHeight}) with a live site snapshot.`
+            : `Downloaded ${fmt.label} export (${canvasWidth}×${canvasHeight}) without a live snapshot (fallback content used).`
+        );
       },
       fmt.type,
       quality
@@ -379,7 +424,7 @@ function App() {
               <NumberField label="Quality (0-1)" value={state.exportQuality} onChange={(v) => setField('exportQuality', Math.max(0.1, Math.min(1, v)))} />
             </TwoCols>
             <button className="mt-2 w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium hover:bg-emerald-400" onClick={exportFrame}>Download image</button>
-            <p className="mt-2 text-xs text-slate-400">No browser screen-share or capture permission needed.</p>
+            <p className="mt-2 text-xs text-slate-400">Export automatically tries loading a live snapshot of the URL before downloading.</p>
           </Control>
 
           <p className="text-sm text-slate-300">{status}</p>
