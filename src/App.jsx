@@ -298,7 +298,7 @@ function App() {
         drawX = bodyX - (drawW - bodyW) / 2;
       } else {
         drawH = bodyW / snapshotRatio;
-        drawY = bodyY - (drawH - bodyH) / 2;
+        drawY = bodyY;
       }
 
       ctx.save();
@@ -447,8 +447,8 @@ function App() {
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-3" style={getBgStyle(state)}>
-          <div ref={viewportRef} className="h-[75vh] min-h-[420px] w-full overflow-hidden rounded-lg p-3">
-            <div className="relative mx-auto" style={{ width: `${previewLayout.canvasWidth}px`, height: `${previewLayout.canvasHeight}px` }}>
+          <div ref={viewportRef} className="h-[75vh] min-h-[420px] w-full rounded-lg p-3 flex items-center justify-center">
+            <div className="relative" style={{ width: `${previewLayout.canvasWidth}px`, height: `${previewLayout.canvasHeight}px` }}>
               <div
                 className="absolute overflow-hidden"
                 style={{
