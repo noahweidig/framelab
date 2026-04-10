@@ -112,16 +112,16 @@ async function loadSnapshotWithFallbacks(url, signal) {
     }
   ];
 
-  let lastError;
+  const failures = [];
   for (const getSnapshot of providers) {
     try {
       return await getSnapshot();
     } catch (error) {
       if (error?.name === 'AbortError') throw error;
-      lastError = error;
+      failures.push(error?.message || String(error));
     }
   }
-  throw lastError || new Error('All snapshot providers failed');
+  throw new Error(failures.length ? failures.join(' | ') : 'All snapshot providers failed');
 }
 
 function parseUrlState() {
@@ -306,16 +306,17 @@ function App() {
     setStatus(`Fetching snapshot for ${normalizedUrl}…`);
     const url = normalizedUrl;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
     loadSnapshotWithFallbacks(url, controller.signal)
       .then((bitmap) => {
         clearTimeout(timeout);
         snapshotCacheRef.current = { url, bitmap };
-        setStatus(`Snapshot ready. Click "Download image" to export.`);
+        setStatus(`Snapshot cached for ${url}. Download is now instant unless URL changes.`);
       })
-      .catch(() => {
+      .catch((err) => {
         clearTimeout(timeout);
-        setStatus(`Loaded ${url}. Export renders straight to a downloadable image file.`);
+        setError(`Could not prefetch snapshot: ${err?.message || 'unknown error'}`);
+        setStatus(`Loaded ${url}. Export will retry snapshot and fall back only if all providers fail.`);
       });
   };
 
@@ -533,7 +534,7 @@ function App() {
     if (!snapshot) {
       setStatus(`Loading snapshot for ${normalizedUrl} before export…`);
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeout = setTimeout(() => controller.abort(), 30000);
       try {
         snapshot = await loadSnapshotWithFallbacks(normalizedUrl, controller.signal);
         snapshotCacheRef.current = { url: normalizedUrl, bitmap: snapshot };
