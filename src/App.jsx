@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 const CANVAS_PRESETS = {
   twitter_landscape: { label: 'Twitter/X (1200×675)', width: 1200, height: 675 },
   social_card: { label: 'Open Graph (1200×630)', width: 1200, height: 630 },
-  instagram_square: { label: 'Instagram (1080×1080)', width: 1080, height: 1080 },
+  instagram_square: { label: 'Instagram Square (1080×1080)', width: 1080, height: 1080 },
+  instagram_story: { label: 'Instagram Story (1080×1920)', width: 1080, height: 1920 },
   linkedin: { label: 'LinkedIn (1200×627)', width: 1200, height: 627 },
   custom: { label: 'Custom', width: 1200, height: 630 }
 };
@@ -13,6 +14,9 @@ const EXPORT_FORMATS = {
   jpeg: { label: 'JPEG', type: 'image/jpeg', extension: 'jpg' },
   webp: { label: 'WebP', type: 'image/webp', extension: 'webp' }
 };
+
+// iPhone 14/15 logical pixel bezels (at 1x)
+const PHONE_BEZELS = { side: 13, top: 62, bottom: 34 };
 
 const DEFAULTS = {
   url: 'https://example.com',
@@ -102,6 +106,9 @@ function App() {
   const viewportRef = useRef(null);
   const snapshotCacheRef = useRef(null);
 
+  const isPhone = state.frameStyle.startsWith('iphone');
+  const isDark = state.frameStyle.includes('dark');
+
   useEffect(() => {
     const params = new URLSearchParams();
     Object.entries(state).forEach(([k, v]) => params.set(k, String(v)));
@@ -123,10 +130,19 @@ function App() {
       const scaledPadding = Math.max(0, state.padding * canvasScale);
       const contentW = Math.max(120, canvasWidth - scaledPadding * 2);
       const contentH = Math.max(100, canvasHeight - scaledPadding * 2);
-      const browserScale = Math.min(contentW / state.browserWidth, contentH / state.browserHeight);
 
-      const frameWidth = Math.max(100, state.browserWidth * browserScale);
-      const frameHeight = Math.max(80, state.browserHeight * browserScale);
+      let frameWidth, frameHeight;
+      if (state.frameStyle.startsWith('iphone')) {
+        const phoneBodyW = state.browserWidth + PHONE_BEZELS.side * 2;
+        const phoneBodyH = state.browserHeight + PHONE_BEZELS.top + PHONE_BEZELS.bottom;
+        const fs = Math.min(contentW / phoneBodyW, contentH / phoneBodyH);
+        frameWidth = Math.max(80, phoneBodyW * fs);
+        frameHeight = Math.max(120, phoneBodyH * fs);
+      } else {
+        const browserScale = Math.min(contentW / state.browserWidth, contentH / state.browserHeight);
+        frameWidth = Math.max(100, state.browserWidth * browserScale);
+        frameHeight = Math.max(80, state.browserHeight * browserScale);
+      }
 
       setPreviewLayout({
         canvasWidth,
@@ -148,31 +164,79 @@ function App() {
       observer.disconnect();
       window.removeEventListener('resize', updateFrameSize);
     };
-  }, [state.browserWidth, state.browserHeight, state.canvasWidth, state.canvasHeight, state.padding]);
+  }, [state.browserWidth, state.browserHeight, state.canvasWidth, state.canvasHeight, state.padding, state.frameStyle]);
 
   const frameTheme = useMemo(() => {
-    const dark = state.frameStyle.includes('dark');
-    return {
-      shell: dark ? '#1f2937' : '#e2e8f0',
-      pageBg: dark ? '#0b1120' : '#ffffff',
-      urlPill: dark ? '#374151' : '#ffffff',
-      urlText: dark ? '#9ca3af' : '#64748b',
-      border: dark ? '#0f172a' : '#cbd5e1',
-      placeholderTitle: dark ? '#e2e8f0' : '#0f172a',
-      placeholderText: dark ? '#94a3b8' : '#475569'
-    };
-  }, [state.frameStyle]);
+    if (state.frameStyle.startsWith('iphone')) {
+      return isDark
+        ? {
+            shell: '#1c1c1e',
+            pageBg: '#000000',
+            urlPill: '#2c2c2e',
+            urlText: '#8e8e93',
+            border: '#3a3a3c',
+            placeholderTitle: '#e5e5ea',
+            placeholderText: '#8e8e93'
+          }
+        : {
+            shell: '#e8e8ed',
+            pageBg: '#ffffff',
+            urlPill: '#f2f2f7',
+            urlText: '#6c6c70',
+            border: '#c7c7cc',
+            placeholderTitle: '#1c1c1e',
+            placeholderText: '#6c6c70'
+          };
+    }
+    return isDark
+      ? {
+          shell: '#1f2937',
+          pageBg: '#0b1120',
+          urlPill: '#374151',
+          urlText: '#9ca3af',
+          border: '#0f172a',
+          placeholderTitle: '#e2e8f0',
+          placeholderText: '#94a3b8'
+        }
+      : {
+          shell: '#e2e8f0',
+          pageBg: '#ffffff',
+          urlPill: '#ffffff',
+          urlText: '#64748b',
+          border: '#cbd5e1',
+          placeholderTitle: '#0f172a',
+          placeholderText: '#475569'
+        };
+  }, [state.frameStyle, isDark]);
 
   const setField = (field, value) => setState((prev) => ({ ...prev, [field]: value }));
 
   const handlePreset = (preset) => {
     const p = CANVAS_PRESETS[preset];
-    setState((prev) => ({
-      ...prev,
-      preset,
-      canvasWidth: p.width,
-      canvasHeight: p.height
-    }));
+    setState((prev) => ({ ...prev, preset, canvasWidth: p.width, canvasHeight: p.height }));
+  };
+
+  // Switching to/from iPhone auto-adjusts browser dimensions to sensible defaults
+  const handleFrameStyle = (style) => {
+    const wasPhone = state.frameStyle.startsWith('iphone');
+    const willBePhone = style.startsWith('iphone');
+    if (willBePhone && !wasPhone) {
+      setState((prev) => ({
+        ...prev,
+        frameStyle: style,
+        browserWidth: 390,
+        browserHeight: 844
+      }));
+    } else if (!willBePhone && wasPhone) {
+      setState((prev) => ({
+        ...prev,
+        frameStyle: style,
+        browserWidth: 980,
+        browserHeight: 560
+      }));
+    } else {
+      setField('frameStyle', style);
+    }
   };
 
   const applyUrl = () => {
@@ -212,16 +276,7 @@ function App() {
     setError('');
 
     const fmt = EXPORT_FORMATS[state.exportFormat] || EXPORT_FORMATS.png;
-    const { canvasWidth, canvasHeight, browserWidth, browserHeight, padding, radius, showUrlBar, zoom } = state;
-    const urlBarHeight = showUrlBar ? 52 : 34;
-    const contentWidth = Math.max(120, canvasWidth - padding * 2);
-    const contentHeight = Math.max(120, canvasHeight - padding * 2);
-    const frameScale = Math.min(contentWidth / browserWidth, contentHeight / browserHeight);
-    const frameW = browserWidth * frameScale;
-    const frameH = browserHeight * frameScale;
-    const frameX = (canvasWidth - frameW) / 2;
-    const frameY = (canvasHeight - frameH) / 2;
-    const rr = Math.min(radius, frameW / 2, frameH / 2);
+    const { canvasWidth, canvasHeight, browserWidth, browserHeight, padding, radius, showUrlBar } = state;
 
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
@@ -232,6 +287,7 @@ function App() {
       return;
     }
 
+    // --- Background ---
     if (state.mode === 'solid') {
       ctx.fillStyle = state.bgSolid;
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -252,67 +308,162 @@ function App() {
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     }
 
-    ctx.shadowColor = 'rgba(2, 6, 23, 0.38)';
-    ctx.shadowBlur = state.shadow;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = Math.round(state.shadow / 6);
-    ctx.fillStyle = frameTheme.shell;
-    roundedRect(ctx, frameX, frameY, frameW, frameH, radius);
-    ctx.fill();
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
+    const contentWidth = Math.max(120, canvasWidth - padding * 2);
+    const contentHeight = Math.max(120, canvasHeight - padding * 2);
 
-    ctx.strokeStyle = frameTheme.border;
-    ctx.lineWidth = 2;
-    roundedRect(ctx, frameX, frameY, frameW, frameH, radius);
-    ctx.stroke();
+    // Variables for the viewport/screen area where the snapshot is drawn
+    let bodyX, bodyY, bodyW, bodyH;
+    let clipBody;        // sets ctx path to the screen region
+    let postSnapshotDraw = () => {}; // overlays drawn after snapshot
 
-    ctx.fillStyle = frameTheme.shell;
-    roundedRect(ctx, frameX, frameY, frameW, urlBarHeight, Math.max(6, radius - 2));
-    ctx.fill();
+    if (isPhone) {
+      // --- iPhone frame ---
+      const { side: SIDE, top: TOP, bottom: BOTTOM } = PHONE_BEZELS;
+      const phoneBodyW = browserWidth + SIDE * 2;
+      const phoneBodyH = browserHeight + TOP + BOTTOM;
+      const fs = Math.min(contentWidth / phoneBodyW, contentHeight / phoneBodyH);
 
-    const dotY = frameY + 20;
-    [ '#fb7185', '#facc15', '#4ade80' ].forEach((color, i) => {
-      ctx.beginPath();
-      ctx.fillStyle = color;
-      ctx.arc(frameX + 18 + i * 14, dotY, 5, 0, Math.PI * 2);
+      const phoneW = phoneBodyW * fs;
+      const phoneH = phoneBodyH * fs;
+      const phoneX = (canvasWidth - phoneW) / 2;
+      const phoneY = (canvasHeight - phoneH) / 2;
+
+      const sideS = SIDE * fs;
+      const topS = TOP * fs;
+      const bottomS = BOTTOM * fs;
+      const bodyRad = Math.min(44 * fs, phoneW / 4);
+      const screenRad = Math.min(38 * fs, (phoneW - sideS * 2) / 4);
+
+      const screenX = phoneX + sideS;
+      const screenY = phoneY + topS;
+      const screenW = phoneW - sideS * 2;
+      const screenH = phoneH - topS - bottomS;
+
+      // Phone body + shadow
+      ctx.shadowColor = 'rgba(2,6,23,0.45)';
+      ctx.shadowBlur = state.shadow;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = Math.round(state.shadow / 6);
+      ctx.fillStyle = frameTheme.shell;
+      roundedRect(ctx, phoneX, phoneY, phoneW, phoneH, bodyRad);
       ctx.fill();
-    });
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
 
-    if (showUrlBar) {
-      const pillX = frameX + 70;
-      const pillY = frameY + 11;
-      const pillW = frameW - 85;
-      const pillH = 22;
-      ctx.fillStyle = frameTheme.urlPill;
-      roundedRect(ctx, pillX, pillY, pillW, pillH, 7);
+      // Phone body border
+      ctx.strokeStyle = frameTheme.border;
+      ctx.lineWidth = 1.5;
+      roundedRect(ctx, phoneX, phoneY, phoneW, phoneH, bodyRad);
+      ctx.stroke();
+
+      // Screen background
+      ctx.fillStyle = frameTheme.pageBg;
+      roundedRect(ctx, screenX, screenY, screenW, screenH, screenRad);
       ctx.fill();
-      ctx.font = `${Math.max(11, Math.floor(frameW / 55))}px Inter, system-ui, sans-serif`;
-      ctx.fillStyle = frameTheme.urlText;
-      ctx.fillText(state.url.replace(/^https?:\/\//, ''), pillX + 10, pillY + 15);
+
+      bodyX = screenX;
+      bodyY = screenY;
+      bodyW = screenW;
+      bodyH = screenH;
+      clipBody = () => { roundedRect(ctx, bodyX, bodyY, bodyW, bodyH, screenRad); };
+
+      postSnapshotDraw = () => {
+        // Dynamic island — pill centered in the top bezel
+        const diW = screenW * 0.3;
+        const diH = Math.max(6, 11 * fs);
+        const diX = screenX + (screenW - diW) / 2;
+        const diY = phoneY + (topS - diH) / 2;
+        ctx.fillStyle = '#000000';
+        roundedRect(ctx, diX, diY, diW, diH, diH / 2);
+        ctx.fill();
+
+        // Home indicator — pill centered in the bottom bezel
+        const hiW = screenW * 0.32;
+        const hiH = Math.max(3, 4 * fs);
+        const hiX = screenX + (screenW - hiW) / 2;
+        const hiY = phoneY + phoneH - bottomS / 2 - hiH / 2;
+        ctx.fillStyle = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.22)';
+        roundedRect(ctx, hiX, hiY, hiW, hiH, hiH / 2);
+        ctx.fill();
+      };
+    } else {
+      // --- Mac browser frame ---
+      const urlBarHeight = showUrlBar ? 52 : 34;
+      const frameScale = Math.min(contentWidth / browserWidth, contentHeight / browserHeight);
+      const frameW = browserWidth * frameScale;
+      const frameH = browserHeight * frameScale;
+      const frameX = (canvasWidth - frameW) / 2;
+      const frameY = (canvasHeight - frameH) / 2;
+      const rr = Math.min(radius, frameW / 2, frameH / 2);
+
+      // Shadow
+      ctx.shadowColor = 'rgba(2,6,23,0.38)';
+      ctx.shadowBlur = state.shadow;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = Math.round(state.shadow / 6);
+      ctx.fillStyle = frameTheme.shell;
+      roundedRect(ctx, frameX, frameY, frameW, frameH, radius);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+
+      ctx.strokeStyle = frameTheme.border;
+      ctx.lineWidth = 2;
+      roundedRect(ctx, frameX, frameY, frameW, frameH, radius);
+      ctx.stroke();
+
+      // Chrome bar
+      ctx.fillStyle = frameTheme.shell;
+      roundedRect(ctx, frameX, frameY, frameW, urlBarHeight, Math.max(6, radius - 2));
+      ctx.fill();
+
+      const dotY = frameY + 20;
+      ['#fb7185', '#facc15', '#4ade80'].forEach((color, i) => {
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        ctx.arc(frameX + 18 + i * 14, dotY, 5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      if (showUrlBar) {
+        const pillX = frameX + 70;
+        const pillY = frameY + 11;
+        const pillW = frameW - 85;
+        const pillH = 22;
+        ctx.fillStyle = frameTheme.urlPill;
+        roundedRect(ctx, pillX, pillY, pillW, pillH, 7);
+        ctx.fill();
+        ctx.font = `${Math.max(11, Math.floor(frameW / 55))}px Inter, system-ui, sans-serif`;
+        ctx.fillStyle = frameTheme.urlText;
+        ctx.fillText(state.url.replace(/^https?:\/\//, ''), pillX + 10, pillY + 15);
+      }
+
+      bodyX = frameX;
+      bodyY = frameY + urlBarHeight;
+      bodyW = frameW;
+      bodyH = frameH - urlBarHeight;
+
+      clipBody = () => {
+        ctx.beginPath();
+        ctx.moveTo(bodyX, bodyY);
+        ctx.lineTo(bodyX + bodyW, bodyY);
+        ctx.lineTo(bodyX + bodyW, bodyY + bodyH - rr);
+        ctx.quadraticCurveTo(bodyX + bodyW, bodyY + bodyH, bodyX + bodyW - rr, bodyY + bodyH);
+        ctx.lineTo(bodyX + rr, bodyY + bodyH);
+        ctx.quadraticCurveTo(bodyX, bodyY + bodyH, bodyX, bodyY + bodyH - rr);
+        ctx.lineTo(bodyX, bodyY);
+        ctx.closePath();
+      };
+
+      // Body background
+      ctx.fillStyle = frameTheme.pageBg;
+      clipBody();
+      ctx.fill();
     }
 
-    const bodyX = frameX;
-    const bodyY = frameY + urlBarHeight;
-    const bodyW = frameW;
-    const bodyH = frameH - urlBarHeight;
-    const bodyRoundedPath = () => {
-      ctx.beginPath();
-      ctx.moveTo(bodyX, bodyY);
-      ctx.lineTo(bodyX + bodyW, bodyY);
-      ctx.lineTo(bodyX + bodyW, bodyY + bodyH - rr);
-      ctx.quadraticCurveTo(bodyX + bodyW, bodyY + bodyH, bodyX + bodyW - rr, bodyY + bodyH);
-      ctx.lineTo(bodyX + rr, bodyY + bodyH);
-      ctx.quadraticCurveTo(bodyX, bodyY + bodyH, bodyX, bodyY + bodyH - rr);
-      ctx.lineTo(bodyX, bodyY);
-      ctx.closePath();
-    };
-
-    ctx.fillStyle = frameTheme.pageBg;
-    bodyRoundedPath();
-    ctx.fill();
-
+    // --- Draw snapshot ---
     let drewSnapshot = false;
     try {
       let snapshot;
@@ -330,30 +481,24 @@ function App() {
         }
       }
 
+      // Always fill the full viewport width, aligned to top-left.
+      // This matches real browser behavior (page fills width, scrolls down).
       const snapshotRatio = snapshot.width / snapshot.height;
-      const targetRatio = bodyW / bodyH;
-      let drawW = bodyW;
-      let drawH = bodyH;
-      let drawX = bodyX;
-      let drawY = bodyY;
-
-      if (snapshotRatio > targetRatio) {
-        drawW = bodyH * snapshotRatio;
-        drawX = bodyX - (drawW - bodyW) / 2;
-      } else {
-        drawH = bodyW / snapshotRatio;
-        drawY = bodyY;
-      }
+      const drawW = bodyW;
+      const drawH = bodyW / snapshotRatio;
 
       ctx.save();
-      bodyRoundedPath();
+      clipBody();
       ctx.clip();
-      ctx.drawImage(snapshot, drawX, drawY, drawW, drawH);
+      ctx.drawImage(snapshot, bodyX, bodyY, drawW, drawH);
       ctx.restore();
       drewSnapshot = true;
     } catch {
       drewSnapshot = false;
     }
+
+    // Overlays drawn after the snapshot (Dynamic Island, Home Indicator)
+    postSnapshotDraw();
 
     if (!drewSnapshot) {
       ctx.fillStyle = frameTheme.placeholderTitle;
@@ -362,7 +507,6 @@ function App() {
       ctx.fillStyle = frameTheme.placeholderText;
       ctx.font = `${Math.max(13, Math.floor(bodyW / 42))}px Inter, system-ui, sans-serif`;
       ctx.fillText(`URL: ${state.url}`, bodyX + 24, bodyY + 88);
-      ctx.fillText(`Page zoom: ${zoom.toFixed(2)}x`, bodyX + 24, bodyY + 114);
       ctx.fillText('Could not load a remote snapshot for this site during export.', bodyX + 24, bodyY + 142);
     }
 
@@ -388,6 +532,17 @@ function App() {
       quality
     );
   };
+
+  // Compute iPhone preview bezel sizes in preview pixels
+  const phonePrevScale = isPhone ? previewLayout.frameWidth / (state.browserWidth + PHONE_BEZELS.side * 2) : 1;
+  const phonePrevSide = PHONE_BEZELS.side * phonePrevScale;
+  const phonePrevTop = PHONE_BEZELS.top * phonePrevScale;
+  const phonePrevBottom = PHONE_BEZELS.bottom * phonePrevScale;
+  const phonePrevScreenW = previewLayout.frameWidth - phonePrevSide * 2;
+  const phonePrevScreenH = previewLayout.frameHeight - phonePrevTop - phonePrevBottom;
+  const phonePrevBodyRad = Math.min(44 * phonePrevScale, previewLayout.frameWidth / 4);
+  const phonePrevScreenRad = Math.min(38 * phonePrevScale, phonePrevScreenW / 4);
+  const phonePrevDiH = Math.max(5, 11 * phonePrevScale);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -418,31 +573,40 @@ function App() {
             <NumberField label="Canvas H" value={state.canvasHeight} onChange={(v) => setField('canvasHeight', v)} />
           </TwoCols>
           <TwoCols>
-            <NumberField label="Browser W" value={state.browserWidth} onChange={(v) => setField('browserWidth', v)} />
-            <NumberField label="Browser H" value={state.browserHeight} onChange={(v) => setField('browserHeight', v)} />
+            <NumberField label={isPhone ? 'Screen W' : 'Browser W'} value={state.browserWidth} onChange={(v) => setField('browserWidth', v)} />
+            <NumberField label={isPhone ? 'Screen H' : 'Browser H'} value={state.browserHeight} onChange={(v) => setField('browserHeight', v)} />
           </TwoCols>
 
           <TwoCols>
             <NumberField label="Padding" value={state.padding} onChange={(v) => setField('padding', v)} />
-            <NumberField label="Radius" value={state.radius} onChange={(v) => setField('radius', v)} />
+            {!isPhone && <NumberField label="Radius" value={state.radius} onChange={(v) => setField('radius', v)} />}
           </TwoCols>
           <NumberField label="Shadow blur" value={state.shadow} onChange={(v) => setField('shadow', v)} />
 
           <Control label="Page zoom (preview)">
             <div className="flex items-center gap-3">
-              <input type="range" min={0.5} max={2} step={0.05} value={state.zoom} className="w-full" onChange={(e) => setField('zoom', Number(e.target.value))} />
+              <input type="range" min={0.1} max={2} step={0.05} value={state.zoom} className="w-full" onChange={(e) => setField('zoom', Number(e.target.value))} />
               <span className="w-14 text-right font-mono text-sm">{state.zoom.toFixed(2)}x</span>
             </div>
           </Control>
 
           <Control label="Frame style">
-            <select className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" value={state.frameStyle} onChange={(e) => setField('frameStyle', e.target.value)}>
+            <select className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" value={state.frameStyle} onChange={(e) => handleFrameStyle(e.target.value)}>
               <option value="mac-dark">Mac Dark</option>
               <option value="mac-light">Mac Light</option>
+              <option value="iphone-dark">iPhone Dark</option>
+              <option value="iphone-light">iPhone Light</option>
             </select>
-            <label className="mt-2 flex items-center gap-2 text-sm text-slate-300">
-              <input type="checkbox" checked={state.showUrlBar} onChange={(e) => setField('showUrlBar', e.target.checked)} /> Show URL bar
-            </label>
+            {!isPhone && (
+              <label className="mt-2 flex items-center gap-2 text-sm text-slate-300">
+                <input type="checkbox" checked={state.showUrlBar} onChange={(e) => setField('showUrlBar', e.target.checked)} /> Show URL bar
+              </label>
+            )}
+            {isPhone && (
+              <p className="mt-2 text-xs text-slate-400">
+                Screen W/H sets the mobile viewport (390×844 = iPhone 14/15). Use "Instagram Story" preset for portrait canvas.
+              </p>
+            )}
           </Control>
 
           <Control label="Background">
@@ -492,45 +656,129 @@ function App() {
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-3" style={getBgStyle(state)}>
           <div ref={viewportRef} className="h-[75vh] min-h-[420px] w-full flex items-center justify-center">
             <div className="relative" style={{ width: `${previewLayout.canvasWidth}px`, height: `${previewLayout.canvasHeight}px` }}>
-              <div
-                className="absolute overflow-hidden"
-                style={{
-                  left: `${previewLayout.frameOffsetX}px`,
-                  top: `${previewLayout.frameOffsetY}px`,
-                  width: `${previewLayout.frameWidth}px`,
-                  height: `${previewLayout.frameHeight}px`,
-                  borderRadius: `${state.radius}px`,
-                  boxShadow: `0 ${Math.round(state.shadow / 6)}px ${state.shadow}px rgba(2, 6, 23, 0.38)`,
-                  backgroundColor: frameTheme.shell,
-                  border: `1px solid ${frameTheme.border}`
-                }}
-              >
-                <div style={{ height: state.showUrlBar ? '52px' : '34px', backgroundColor: frameTheme.shell, display: 'flex', alignItems: 'center', padding: '0 16px', gap: '12px' }}>
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
-                  </div>
-                  {state.showUrlBar && (
-                    <div className="truncate rounded-md px-3 py-1 text-sm" style={{ width: '100%', backgroundColor: frameTheme.urlPill, color: frameTheme.urlText }}>
-                      {state.url.replace(/^https?:\/\//, '')}
+
+              {isPhone ? (
+                // ---- iPhone frame preview ----
+                <div
+                  className="absolute"
+                  style={{
+                    left: `${previewLayout.frameOffsetX}px`,
+                    top: `${previewLayout.frameOffsetY}px`,
+                    width: `${previewLayout.frameWidth}px`,
+                    height: `${previewLayout.frameHeight}px`,
+                    borderRadius: `${phonePrevBodyRad}px`,
+                    boxShadow: `0 ${Math.round(state.shadow / 6)}px ${state.shadow}px rgba(2,6,23,0.45)`,
+                    backgroundColor: frameTheme.shell,
+                    border: `1.5px solid ${frameTheme.border}`
+                  }}
+                >
+                  {/* Dynamic island */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: `${(phonePrevTop - phonePrevDiH) / 2}px`,
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: `${phonePrevScreenW * 0.3}px`,
+                      height: `${phonePrevDiH}px`,
+                      borderRadius: `${phonePrevDiH / 2}px`,
+                      backgroundColor: '#000',
+                      zIndex: 10
+                    }}
+                  />
+
+                  {/* Screen area */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${phonePrevSide}px`,
+                      top: `${phonePrevTop}px`,
+                      width: `${phonePrevScreenW}px`,
+                      height: `${phonePrevScreenH}px`,
+                      borderRadius: `${phonePrevScreenRad}px`,
+                      overflow: 'hidden',
+                      backgroundColor: frameTheme.pageBg
+                    }}
+                  >
+                    {/* iframe scaled so it renders at state.browserWidth viewport */}
+                    <div
+                      style={{
+                        width: `${state.browserWidth}px`,
+                        height: `${state.browserHeight}px`,
+                        transform: `scale(${(phonePrevScreenW / state.browserWidth) * state.zoom})`,
+                        transformOrigin: 'top left'
+                      }}
+                    >
+                      <iframe
+                        key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
+                        title="Live site preview"
+                        src={state.url}
+                        style={{ width: '100%', height: '100%', border: 0 }}
+                        loading="eager"
+                        referrerPolicy="no-referrer"
+                        sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
+                      />
                     </div>
-                  )}
+                  </div>
+
+                  {/* Home indicator */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: `${phonePrevBottom / 4}px`,
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: `${phonePrevScreenW * 0.32}px`,
+                      height: '4px',
+                      borderRadius: '2px',
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.25)',
+                      zIndex: 10
+                    }}
+                  />
                 </div>
-                <div style={{ height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg, overflow: 'hidden', borderBottomLeftRadius: `${state.radius}px`, borderBottomRightRadius: `${state.radius}px` }}>
-                  <div style={{ width: `${100 / state.zoom}%`, height: `${100 / state.zoom}%`, transform: `scale(${state.zoom})`, transformOrigin: 'top left' }}>
-                    <iframe
-                      key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
-                      title="Live site preview"
-                      src={state.url}
-                      className="h-full w-full border-0"
-                      loading="eager"
-                      referrerPolicy="no-referrer"
-                      sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
-                    />
+              ) : (
+                // ---- Mac browser frame preview ----
+                <div
+                  className="absolute overflow-hidden"
+                  style={{
+                    left: `${previewLayout.frameOffsetX}px`,
+                    top: `${previewLayout.frameOffsetY}px`,
+                    width: `${previewLayout.frameWidth}px`,
+                    height: `${previewLayout.frameHeight}px`,
+                    borderRadius: `${state.radius}px`,
+                    boxShadow: `0 ${Math.round(state.shadow / 6)}px ${state.shadow}px rgba(2, 6, 23, 0.38)`,
+                    backgroundColor: frameTheme.shell,
+                    border: `1px solid ${frameTheme.border}`
+                  }}
+                >
+                  <div style={{ height: state.showUrlBar ? '52px' : '34px', backgroundColor: frameTheme.shell, display: 'flex', alignItems: 'center', padding: '0 16px', gap: '12px' }}>
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
+                    </div>
+                    {state.showUrlBar && (
+                      <div className="truncate rounded-md px-3 py-1 text-sm" style={{ width: '100%', backgroundColor: frameTheme.urlPill, color: frameTheme.urlText }}>
+                        {state.url.replace(/^https?:\/\//, '')}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg, overflow: 'hidden', borderBottomLeftRadius: `${state.radius}px`, borderBottomRightRadius: `${state.radius}px` }}>
+                    <div style={{ width: `${100 / state.zoom}%`, height: `${100 / state.zoom}%`, transform: `scale(${state.zoom})`, transformOrigin: 'top left' }}>
+                      <iframe
+                        key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
+                        title="Live site preview"
+                        src={state.url}
+                        className="h-full w-full border-0"
+                        loading="eager"
+                        referrerPolicy="no-referrer"
+                        sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
             </div>
           </div>
         </section>
