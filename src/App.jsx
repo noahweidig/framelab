@@ -55,7 +55,8 @@ function App() {
   const [state, setState] = useState(parseUrlState);
   const [status, setStatus] = useState('Live preview enabled. Resize your browser to see it adapt.');
   const [error, setError] = useState('');
-  const [frameSize, setFrameSize] = useState({ width: state.browserWidth, height: state.browserHeight });
+  const [previewLayout, setPreviewLayout] = useState({ canvasWidth: state.canvasWidth, canvasHeight: state.canvasHeight, frameWidth: state.browserWidth, frameHeight: state.browserHeight, frameOffsetX: 0, frameOffsetY: 0 });
+  const [captureBlob, setCaptureBlob] = useState(null);
   const viewportRef = useRef(null);
 
   useEffect(() => {
@@ -71,16 +72,27 @@ function App() {
 
       const maxW = Math.max(320, container.clientWidth - 24);
       const maxH = Math.max(220, container.clientHeight - 24);
-      const ratio = state.browserWidth / state.browserHeight;
 
-      let width = Math.min(maxW, state.browserWidth);
-      let height = width / ratio;
-      if (height > maxH) {
-        height = maxH;
-        width = height * ratio;
-      }
+      const canvasScale = Math.min(maxW / state.canvasWidth, maxH / state.canvasHeight, 1);
+      const canvasWidth = state.canvasWidth * canvasScale;
+      const canvasHeight = state.canvasHeight * canvasScale;
 
-      setFrameSize({ width, height });
+      const scaledPadding = Math.max(0, state.padding * canvasScale);
+      const contentW = Math.max(120, canvasWidth - scaledPadding * 2);
+      const contentH = Math.max(100, canvasHeight - scaledPadding * 2);
+      const browserScale = Math.min(contentW / state.browserWidth, contentH / state.browserHeight);
+
+      const frameWidth = Math.max(100, state.browserWidth * browserScale);
+      const frameHeight = Math.max(80, state.browserHeight * browserScale);
+
+      setPreviewLayout({
+        canvasWidth,
+        canvasHeight,
+        frameWidth,
+        frameHeight,
+        frameOffsetX: (canvasWidth - frameWidth) / 2,
+        frameOffsetY: (canvasHeight - frameHeight) / 2
+      });
     };
 
     updateFrameSize();
@@ -93,7 +105,7 @@ function App() {
       observer.disconnect();
       window.removeEventListener('resize', updateFrameSize);
     };
-  }, [state.browserWidth, state.browserHeight]);
+  }, [state.browserWidth, state.browserHeight, state.canvasWidth, state.canvasHeight, state.padding]);
 
   const frameTheme = useMemo(() => {
     const dark = state.frameStyle.includes('dark');
@@ -121,6 +133,68 @@ function App() {
   const applyUrl = () => {
     setError('');
     setStatus(`Live page loaded: ${state.url}`);
+  };
+
+  const captureCurrentView = async () => {
+    setError('');
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'never' },
+        audio: false
+      });
+      const [track] = stream.getVideoTracks();
+      const imageCapture = new ImageCapture(track);
+      const bitmap = await imageCapture.grabFrame();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0);
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 0.95));
+      stream.getTracks().forEach((t) => t.stop());
+      if (!blob) throw new Error('Could not create image blob from capture.');
+      setCaptureBlob(blob);
+      setStatus('Capture ready. Use download options below.');
+    } catch (e) {
+      setError('Screen capture was cancelled or blocked by the browser.');
+    }
+  };
+
+  const downloadCapture = (type) => {
+    if (!captureBlob) {
+      setError('Capture an image first, then download it.');
+      return;
+    }
+    const fileName = type === 'image/jpeg' ? 'framelab-capture.jpg' : 'framelab-capture.png';
+    if (type === captureBlob.type) {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(captureBlob);
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }, type, 0.92);
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(captureBlob);
   };
 
   return (
@@ -200,60 +274,74 @@ function App() {
             </div>
           </Control>
 
+          <Control label="Image download options">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <button className="rounded-lg bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700" onClick={captureCurrentView}>Capture screen</button>
+              <button className="rounded-lg bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700" onClick={() => downloadCapture('image/png')}>Download PNG</button>
+              <button className="rounded-lg bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700" onClick={() => downloadCapture('image/jpeg')}>Download JPG</button>
+            </div>
+            <p className="mt-1 text-xs text-slate-400">Capture uses your browser's built-in screen sharing dialog, then enables PNG/JPG downloads.</p>
+          </Control>
+
           <p className="text-sm text-slate-300">{status}</p>
           {error && <p className="text-sm text-rose-300">{error}</p>}
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-3" style={getBgStyle(state)}>
           <div ref={viewportRef} className="h-[70vh] min-h-[420px] w-full overflow-hidden rounded-lg p-3">
-            <div
-              className="mx-auto overflow-hidden"
-              style={{
-                width: `${frameSize.width}px`,
-                height: `${frameSize.height}px`,
-                borderRadius: `${state.radius}px`,
-                boxShadow: `0 ${Math.round(state.shadow / 6)}px ${state.shadow}px rgba(2, 6, 23, 0.38)`,
-                backgroundColor: frameTheme.shell,
-                border: frameTheme.border
-              }}
-            >
+            <div className="relative mx-auto" style={{ width: `${previewLayout.canvasWidth}px`, height: `${previewLayout.canvasHeight}px` }}>
               <div
+                className="absolute overflow-hidden"
                 style={{
-                  height: state.showUrlBar ? '52px' : '34px',
+                  left: `${previewLayout.frameOffsetX}px`,
+                  top: `${previewLayout.frameOffsetY}px`,
+                  width: `${previewLayout.frameWidth}px`,
+                  height: `${previewLayout.frameHeight}px`,
+                  borderRadius: `${state.radius}px`,
+                  boxShadow: `0 ${Math.round(state.shadow / 6)}px ${state.shadow}px rgba(2, 6, 23, 0.38)`,
                   backgroundColor: frameTheme.shell,
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0 16px',
-                  gap: '12px'
+                  border: frameTheme.border
                 }}
               >
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
-                </div>
-                {state.showUrlBar && (
-                  <div
-                    className="truncate rounded-md px-3 py-1 text-sm"
-                    style={{
-                      width: '100%',
-                      backgroundColor: frameTheme.urlPill,
-                      color: frameTheme.urlText
-                    }}
-                  >
-                    {state.url.replace(/^https?:\/\//, '')}
+                <div
+                  style={{
+                    height: state.showUrlBar ? '52px' : '34px',
+                    backgroundColor: frameTheme.shell,
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '0 16px',
+                    gap: '12px'
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
                   </div>
-                )}
-              </div>
-              <div style={{ height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg }}>
-                <iframe
-                  title="Live site preview"
-                  src={state.url}
-                  className="h-full w-full border-0"
-                  loading="eager"
-                  referrerPolicy="no-referrer"
-                  sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
-                />
+                  {state.showUrlBar && (
+                    <div
+                      className="truncate rounded-md px-3 py-1 text-sm"
+                      style={{
+                        width: '100%',
+                        backgroundColor: frameTheme.urlPill,
+                        color: frameTheme.urlText
+                      }}
+                    >
+                      {state.url.replace(/^https?:\/\//, '')}
+                    </div>
+                  )}
+                </div>
+                <div style={{ height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg }}>
+                  <iframe
+                    key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
+                    title="Live site preview"
+                    src={state.url}
+                    className="h-full w-full border-0"
+                    loading="eager"
+                    referrerPolicy="no-referrer"
+                    sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
+                  />
+                </div>
               </div>
             </div>
           </div>
