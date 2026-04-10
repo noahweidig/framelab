@@ -228,6 +228,7 @@ function App() {
         ? {
             shell: '#1c1c1e',
             pageBg: '#000000',
+            topFill: '#000000',
             urlPill: '#2c2c2e',
             urlText: '#8e8e93',
             border: '#3a3a3c',
@@ -237,6 +238,7 @@ function App() {
         : {
             shell: '#e8e8ed',
             pageBg: '#ffffff',
+            topFill: '#ffffff',
             urlPill: '#f2f2f7',
             urlText: '#6c6c70',
             border: '#c7c7cc',
@@ -433,7 +435,14 @@ function App() {
       clipBody = () => { roundedRect(ctx, bodyX, bodyY, bodyW, bodyH, screenRad); };
 
       postSnapshotDraw = () => {
-        // Dynamic island / notch — pill centered in the top bezel
+        // Top fill (no notch look)
+        const fillPad = Math.max(4, 6 * fs);
+        const fillH = Math.max(8, 16 * fs);
+        ctx.fillStyle = frameTheme.topFill;
+        roundedRect(ctx, screenX + fillPad, screenY, screenW - fillPad * 2, fillH, fillH / 2);
+        ctx.fill();
+
+        // Dynamic Island centered at top
         const diW = screenW * 0.3;
         const diH = Math.max(6, 11 * fs);
         const diX = screenX + (screenW - diW) / 2;
@@ -723,6 +732,17 @@ function App() {
                   }}
                 >
                   {/* Dynamic island */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${phonePrevSide + Math.max(4, 6 * phonePrevScale)}px`,
+                      top: `${phonePrevTop}px`,
+                      width: `${phonePrevScreenW - Math.max(4, 6 * phonePrevScale) * 2}px`,
+                      height: `${Math.max(8, 16 * phonePrevScale)}px`,
+                      borderRadius: `${Math.max(4, 8 * phonePrevScale)}px`,
+                      backgroundColor: frameTheme.topFill
+                    }}
+                  />
                   <div
                     style={{
                       position: 'absolute',
