@@ -16,7 +16,7 @@ const EXPORT_FORMATS = {
 };
 
 // iPhone 14/15 logical pixel bezels (at 1x)
-const PHONE_BEZELS = { side: 13, top: 62, bottom: 34 };
+const PHONE_BEZELS = { side: 13, top: 62, bottom: 13 };
 
 const DEFAULTS = {
   url: 'https://example.com',
@@ -417,22 +417,13 @@ function App() {
       clipBody = () => { roundedRect(ctx, bodyX, bodyY, bodyW, bodyH, screenRad); };
 
       postSnapshotDraw = () => {
-        // Dynamic island — pill centered in the top bezel
+        // Dynamic island / notch — pill centered in the top bezel
         const diW = screenW * 0.3;
         const diH = Math.max(6, 11 * fs);
         const diX = screenX + (screenW - diW) / 2;
         const diY = phoneY + (topS - diH) / 2;
         ctx.fillStyle = '#000000';
         roundedRect(ctx, diX, diY, diW, diH, diH / 2);
-        ctx.fill();
-
-        // Home indicator — pill centered in the bottom bezel
-        const hiW = screenW * 0.32;
-        const hiH = Math.max(3, 4 * fs);
-        const hiX = screenX + (screenW - hiW) / 2;
-        const hiY = phoneY + phoneH - bottomS / 2 - hiH / 2;
-        ctx.fillStyle = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.22)';
-        roundedRect(ctx, hiX, hiY, hiW, hiH, hiH / 2);
         ctx.fill();
       };
     } else {
@@ -511,26 +502,10 @@ function App() {
       ctx.fill();
     }
 
-    // --- Draw snapshot ---
+    // --- Draw snapshot (export uses only already-loaded snapshot; no network wait) ---
     let drewSnapshot = false;
-    try {
-      let snapshot;
-      if (snapshotCacheRef.current?.url === normalizedUrl) {
-        snapshot = snapshotCacheRef.current.bitmap;
-      } else {
-        setStatus('Fetching snapshot…');
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-        try {
-          snapshot = await loadSnapshotWithFallbacks(normalizedUrl, controller.signal);
-          snapshotCacheRef.current = { url: normalizedUrl, bitmap: snapshot };
-        } finally {
-          clearTimeout(timeout);
-        }
-      }
-
-      // Always fill the full viewport width, aligned to top-left.
-      // This matches real browser behavior (page fills width, scrolls down).
+    const snapshot = snapshotCacheRef.current?.url === normalizedUrl ? snapshotCacheRef.current.bitmap : null;
+    if (snapshot) {
       const snapshotRatio = snapshot.width / snapshot.height;
       const drawW = bodyW;
       const drawH = bodyW / snapshotRatio;
@@ -541,8 +516,6 @@ function App() {
       ctx.drawImage(snapshot, bodyX, bodyY, drawW, drawH);
       ctx.restore();
       drewSnapshot = true;
-    } catch {
-      drewSnapshot = false;
     }
 
     // Overlays drawn after the snapshot (Dynamic Island, Home Indicator)
@@ -573,7 +546,7 @@ function App() {
         setStatus(
           drewSnapshot
             ? `Downloaded ${fmt.label} export (${canvasWidth}×${canvasHeight}) with a live site snapshot.`
-            : `Downloaded ${fmt.label} export (${canvasWidth}×${canvasHeight}) without a live snapshot (fallback content used).`
+            : `Downloaded ${fmt.label} export (${canvasWidth}×${canvasHeight}) without a live snapshot (fallback content used). Click "Load" first to include one.`
         );
       },
       fmt.type,
@@ -769,20 +742,6 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Home indicator */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: `${phonePrevBottom / 4}px`,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: `${phonePrevScreenW * 0.32}px`,
-                      height: '4px',
-                      borderRadius: '2px',
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.25)',
-                      zIndex: 10
-                    }}
-                  />
                 </div>
               ) : (
                 // ---- Mac browser frame preview ----
