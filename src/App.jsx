@@ -93,6 +93,14 @@ async function loadSnapshotWithFallbacks(url, signal) {
       );
       if (!res.ok) throw new Error(`MShots returned ${res.status}`);
       return createImageBitmap(await res.blob());
+    },
+    async () => {
+      const res = await fetch(
+        `https://r.jina.ai/http://image.thum.io/get/width/1600/noanimate/${url}`,
+        { mode: 'cors', signal }
+      );
+      if (!res.ok) throw new Error(`Jina mirror returned ${res.status}`);
+      return createImageBitmap(await res.blob());
     }
   ];
 
@@ -502,9 +510,22 @@ function App() {
       ctx.fill();
     }
 
-    // --- Draw snapshot (export uses only already-loaded snapshot; no network wait) ---
+    // --- Draw snapshot (uses cached snapshot or auto-loads one during export) ---
     let drewSnapshot = false;
-    const snapshot = snapshotCacheRef.current?.url === normalizedUrl ? snapshotCacheRef.current.bitmap : null;
+    let snapshot = snapshotCacheRef.current?.url === normalizedUrl ? snapshotCacheRef.current.bitmap : null;
+    if (!snapshot) {
+      setStatus(`Loading snapshot for ${normalizedUrl} before export…`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        snapshot = await loadSnapshotWithFallbacks(normalizedUrl, controller.signal);
+        snapshotCacheRef.current = { url: normalizedUrl, bitmap: snapshot };
+      } catch {
+        // keep fallback placeholder behavior if all providers fail
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
     if (snapshot) {
       const snapshotRatio = snapshot.width / snapshot.height;
       const drawW = bodyW;
@@ -546,7 +567,7 @@ function App() {
         setStatus(
           drewSnapshot
             ? `Downloaded ${fmt.label} export (${canvasWidth}×${canvasHeight}) with a live site snapshot.`
-            : `Downloaded ${fmt.label} export (${canvasWidth}×${canvasHeight}) without a live snapshot (fallback content used). Click "Load" first to include one.`
+            : `Downloaded ${fmt.label} export (${canvasWidth}×${canvasHeight}) without a live snapshot (fallback content used).`
         );
       },
       fmt.type,
@@ -667,7 +688,7 @@ function App() {
               <NumberField label="Quality (0-1)" value={state.exportQuality} onChange={(v) => setField('exportQuality', Math.max(0.1, Math.min(1, v)))} />
             </TwoCols>
             <button className="mt-2 w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium hover:bg-emerald-400" onClick={exportFrame}>Download image</button>
-            <p className="mt-2 text-xs text-slate-400">Export automatically tries loading a live snapshot of the URL before downloading.</p>
+            <p className="mt-2 text-xs text-slate-400">Export auto-loads live snapshot; “Load” prefetches/cache it for faster download.</p>
           </Control>
 
           <p className="text-sm text-slate-300">{status}</p>
