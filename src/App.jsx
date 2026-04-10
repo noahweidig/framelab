@@ -33,32 +33,34 @@ const DEFAULTS = {
   radius: 20,
   shadow: 38,
   frameStyle: 'mac-dark',
-  showUrlBar: true,
+  showUrlBar: false,
   exportFormat: 'png',
   exportQuality: 0.92
 };
 
-async function loadRemoteSnapshot(url) {
+async function loadRemoteSnapshot(url, signal) {
   // Thum.io expects the target URL as a literal path suffix, NOT percent-encoded
   try {
     const response = await fetch(
       `https://image.thum.io/get/width/1600/noanimate/${url}`,
-      { mode: 'cors' }
+      { mode: 'cors', signal }
     );
     if (response.ok) {
       return createImageBitmap(await response.blob());
     }
-  } catch {}
+  } catch (e) {
+    if (e?.name === 'AbortError') throw e;
+  }
 
   // Fallback: Microlink free-tier screenshot API
   const mlRes = await fetch(
     `https://api.microlink.io/?url=${encodeURIComponent(url)}&screenshot=true&meta=false`,
-    { mode: 'cors' }
+    { mode: 'cors', signal }
   );
   if (!mlRes.ok) throw new Error(`Snapshot service returned ${mlRes.status}`);
   const { status, data } = await mlRes.json();
   if (status !== 'success' || !data?.screenshot?.url) throw new Error('Snapshot unavailable');
-  const imgRes = await fetch(data.screenshot.url, { mode: 'cors' });
+  const imgRes = await fetch(data.screenshot.url, { mode: 'cors', signal });
   if (!imgRes.ok) throw new Error(`Screenshot fetch returned ${imgRes.status}`);
   return createImageBitmap(await imgRes.blob());
 }
@@ -98,6 +100,7 @@ function App() {
     frameOffsetY: 0
   });
   const viewportRef = useRef(null);
+  const snapshotCacheRef = useRef(null);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -110,8 +113,8 @@ function App() {
       const container = viewportRef.current;
       if (!container) return;
 
-      const maxW = Math.max(320, container.clientWidth - 24);
-      const maxH = Math.max(220, container.clientHeight - 24);
+      const maxW = Math.max(320, container.clientWidth);
+      const maxH = Math.max(220, container.clientHeight);
 
       const canvasScale = Math.min(maxW / state.canvasWidth, maxH / state.canvasHeight, 1);
       const canvasWidth = state.canvasWidth * canvasScale;
@@ -174,7 +177,20 @@ function App() {
 
   const applyUrl = () => {
     setError('');
-    setStatus(`Loaded ${state.url}. Export renders straight to a downloadable image file.`);
+    setStatus(`Fetching snapshot for ${state.url}…`);
+    const url = state.url;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    loadRemoteSnapshot(url, controller.signal)
+      .then((bitmap) => {
+        clearTimeout(timeout);
+        snapshotCacheRef.current = { url, bitmap };
+        setStatus(`Snapshot ready. Click "Download image" to export.`);
+      })
+      .catch(() => {
+        clearTimeout(timeout);
+        setStatus(`Loaded ${url}. Export renders straight to a downloadable image file.`);
+      });
   };
 
   const roundedRect = (ctx, x, y, w, h, r) => {
@@ -205,6 +221,7 @@ function App() {
     const frameH = browserHeight * frameScale;
     const frameX = (canvasWidth - frameW) / 2;
     const frameY = (canvasHeight - frameH) / 2;
+    const rr = Math.min(radius, frameW / 2, frameH / 2);
 
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
@@ -280,12 +297,39 @@ function App() {
     const bodyY = frameY + urlBarHeight;
     const bodyW = frameW;
     const bodyH = frameH - urlBarHeight;
+    const bodyRoundedPath = () => {
+      ctx.beginPath();
+      ctx.moveTo(bodyX, bodyY);
+      ctx.lineTo(bodyX + bodyW, bodyY);
+      ctx.lineTo(bodyX + bodyW, bodyY + bodyH - rr);
+      ctx.quadraticCurveTo(bodyX + bodyW, bodyY + bodyH, bodyX + bodyW - rr, bodyY + bodyH);
+      ctx.lineTo(bodyX + rr, bodyY + bodyH);
+      ctx.quadraticCurveTo(bodyX, bodyY + bodyH, bodyX, bodyY + bodyH - rr);
+      ctx.lineTo(bodyX, bodyY);
+      ctx.closePath();
+    };
+
     ctx.fillStyle = frameTheme.pageBg;
-    ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
+    bodyRoundedPath();
+    ctx.fill();
 
     let drewSnapshot = false;
     try {
-      const snapshot = await loadRemoteSnapshot(state.url);
+      let snapshot;
+      if (snapshotCacheRef.current?.url === state.url) {
+        snapshot = snapshotCacheRef.current.bitmap;
+      } else {
+        setStatus('Fetching snapshot…');
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        try {
+          snapshot = await loadRemoteSnapshot(state.url, controller.signal);
+          snapshotCacheRef.current = { url: state.url, bitmap: snapshot };
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
       const snapshotRatio = snapshot.width / snapshot.height;
       const targetRatio = bodyW / bodyH;
       let drawW = bodyW;
@@ -302,8 +346,7 @@ function App() {
       }
 
       ctx.save();
-      ctx.beginPath();
-      ctx.rect(bodyX, bodyY, bodyW, bodyH);
+      bodyRoundedPath();
       ctx.clip();
       ctx.drawImage(snapshot, drawX, drawY, drawW, drawH);
       ctx.restore();
@@ -447,7 +490,7 @@ function App() {
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-3" style={getBgStyle(state)}>
-          <div ref={viewportRef} className="h-[75vh] min-h-[420px] w-full rounded-lg p-3 flex items-center justify-center">
+          <div ref={viewportRef} className="h-[75vh] min-h-[420px] w-full flex items-center justify-center">
             <div className="relative" style={{ width: `${previewLayout.canvasWidth}px`, height: `${previewLayout.canvasHeight}px` }}>
               <div
                 className="absolute overflow-hidden"
@@ -474,7 +517,7 @@ function App() {
                     </div>
                   )}
                 </div>
-                <div style={{ height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg, overflow: 'hidden' }}>
+                <div style={{ height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg, overflow: 'hidden', borderBottomLeftRadius: `${state.radius}px`, borderBottomRightRadius: `${state.radius}px` }}>
                   <div style={{ width: `${100 / state.zoom}%`, height: `${100 / state.zoom}%`, transform: `scale(${state.zoom})`, transformOrigin: 'top left' }}>
                     <iframe
                       key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
