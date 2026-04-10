@@ -69,6 +69,45 @@ async function loadRemoteSnapshot(url, signal) {
   return createImageBitmap(await imgRes.blob());
 }
 
+function normalizeUrl(input) {
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+  try {
+    return new URL(trimmed).toString();
+  } catch {
+    try {
+      return new URL(`https://${trimmed}`).toString();
+    } catch {
+      return '';
+    }
+  }
+}
+
+async function loadSnapshotWithFallbacks(url, signal) {
+  const providers = [
+    () => loadRemoteSnapshot(url, signal),
+    async () => {
+      const res = await fetch(
+        `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=1600`,
+        { mode: 'cors', signal }
+      );
+      if (!res.ok) throw new Error(`MShots returned ${res.status}`);
+      return createImageBitmap(await res.blob());
+    }
+  ];
+
+  let lastError;
+  for (const getSnapshot of providers) {
+    try {
+      return await getSnapshot();
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('All snapshot providers failed');
+}
+
 function parseUrlState() {
   const params = new URLSearchParams(window.location.search);
   const parsed = { ...DEFAULTS };
@@ -105,6 +144,7 @@ function App() {
   });
   const viewportRef = useRef(null);
   const snapshotCacheRef = useRef(null);
+  const normalizedUrl = useMemo(() => normalizeUrl(state.url), [state.url]);
 
   const isPhone = state.frameStyle.startsWith('iphone');
   const isDark = state.frameStyle.includes('dark');
@@ -241,11 +281,15 @@ function App() {
 
   const applyUrl = () => {
     setError('');
-    setStatus(`Fetching snapshot for ${state.url}…`);
-    const url = state.url;
+    if (!normalizedUrl) {
+      setError('Enter a valid URL (example: https://example.com).');
+      return;
+    }
+    setStatus(`Fetching snapshot for ${normalizedUrl}…`);
+    const url = normalizedUrl;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
-    loadRemoteSnapshot(url, controller.signal)
+    loadSnapshotWithFallbacks(url, controller.signal)
       .then((bitmap) => {
         clearTimeout(timeout);
         snapshotCacheRef.current = { url, bitmap };
@@ -274,6 +318,10 @@ function App() {
 
   const exportFrame = async () => {
     setError('');
+    if (!normalizedUrl) {
+      setError('Enter a valid URL (example: https://example.com).');
+      return;
+    }
 
     const fmt = EXPORT_FORMATS[state.exportFormat] || EXPORT_FORMATS.png;
     const { canvasWidth, canvasHeight, browserWidth, browserHeight, padding, radius, showUrlBar } = state;
@@ -467,15 +515,15 @@ function App() {
     let drewSnapshot = false;
     try {
       let snapshot;
-      if (snapshotCacheRef.current?.url === state.url) {
+      if (snapshotCacheRef.current?.url === normalizedUrl) {
         snapshot = snapshotCacheRef.current.bitmap;
       } else {
         setStatus('Fetching snapshot…');
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
         try {
-          snapshot = await loadRemoteSnapshot(state.url, controller.signal);
-          snapshotCacheRef.current = { url: state.url, bitmap: snapshot };
+          snapshot = await loadSnapshotWithFallbacks(normalizedUrl, controller.signal);
+          snapshotCacheRef.current = { url: normalizedUrl, bitmap: snapshot };
         } finally {
           clearTimeout(timeout);
         }
@@ -506,7 +554,7 @@ function App() {
       ctx.fillText('Export-ready browser frame', bodyX + 24, bodyY + 56);
       ctx.fillStyle = frameTheme.placeholderText;
       ctx.font = `${Math.max(13, Math.floor(bodyW / 42))}px Inter, system-ui, sans-serif`;
-      ctx.fillText(`URL: ${state.url}`, bodyX + 24, bodyY + 88);
+      ctx.fillText(`URL: ${normalizedUrl}`, bodyX + 24, bodyY + 88);
       ctx.fillText('Could not load a remote snapshot for this site during export.', bodyX + 24, bodyY + 142);
     }
 
@@ -712,7 +760,7 @@ function App() {
                       <iframe
                         key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
                         title="Live site preview"
-                        src={state.url}
+                        src={normalizedUrl || 'about:blank'}
                         style={{ width: '100%', height: '100%', border: 0 }}
                         loading="eager"
                         referrerPolicy="no-referrer"
@@ -768,7 +816,7 @@ function App() {
                       <iframe
                         key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
                         title="Live site preview"
-                        src={state.url}
+                        src={normalizedUrl || 'about:blank'}
                         className="h-full w-full border-0"
                         loading="eager"
                         referrerPolicy="no-referrer"
