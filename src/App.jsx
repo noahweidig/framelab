@@ -39,13 +39,28 @@ const DEFAULTS = {
 };
 
 async function loadRemoteSnapshot(url) {
-  const endpoint = `https://image.thum.io/get/width/1600/noanimate/${encodeURIComponent(url)}`;
-  const response = await fetch(endpoint, { mode: 'cors' });
-  if (!response.ok) {
-    throw new Error(`Snapshot service returned ${response.status}`);
-  }
-  const blob = await response.blob();
-  return createImageBitmap(blob);
+  // Thum.io expects the target URL as a literal path suffix, NOT percent-encoded
+  try {
+    const response = await fetch(
+      `https://image.thum.io/get/width/1600/noanimate/${url}`,
+      { mode: 'cors' }
+    );
+    if (response.ok) {
+      return createImageBitmap(await response.blob());
+    }
+  } catch {}
+
+  // Fallback: Microlink free-tier screenshot API
+  const mlRes = await fetch(
+    `https://api.microlink.io/?url=${encodeURIComponent(url)}&screenshot=true&meta=false`,
+    { mode: 'cors' }
+  );
+  if (!mlRes.ok) throw new Error(`Snapshot service returned ${mlRes.status}`);
+  const { status, data } = await mlRes.json();
+  if (status !== 'success' || !data?.screenshot?.url) throw new Error('Snapshot unavailable');
+  const imgRes = await fetch(data.screenshot.url, { mode: 'cors' });
+  if (!imgRes.ok) throw new Error(`Screenshot fetch returned ${imgRes.status}`);
+  return createImageBitmap(await imgRes.blob());
 }
 
 function parseUrlState() {
