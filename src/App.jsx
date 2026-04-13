@@ -651,23 +651,39 @@ function App() {
   const phonePrevDiH = Math.max(5, 11 * phonePrevScale);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 px-4 py-4 md:px-6">
-        <h1 className="text-xl font-semibold">FrameLab</h1>
-        <p className="text-sm text-slate-400">Design social-ready browser frames with direct PNG/JPEG/WebP export.</p>
+    <div className="min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500/30">
+      {/* Background radial gradient */}
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),rgba(255,255,255,0))]" />
+
+      <header className="sticky top-0 z-50 flex items-center justify-between border-b border-slate-800/80 bg-slate-950/70 px-4 py-4 backdrop-blur-md md:px-6">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-fuchsia-500 shadow-lg shadow-indigo-500/20">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="2" y="4" width="20" height="16" rx="3" stroke="white" strokeWidth="2"/>
+                <path d="M2 9H22" stroke="white" strokeWidth="2"/>
+                <circle cx="5" cy="6.5" r="1" fill="white"/>
+                <circle cx="8" cy="6.5" r="1" fill="white"/>
+                <circle cx="11" cy="6.5" r="1" fill="white"/>
+              </svg>
+            </div>
+            <h1 className="bg-gradient-to-r from-indigo-400 to-fuchsia-400 bg-clip-text text-xl font-bold text-transparent tracking-tight">FrameLab</h1>
+          </div>
+          <p className="mt-1 text-sm text-slate-400 md:mt-0">Design social-ready browser frames with direct export.</p>
+        </div>
       </header>
 
-      <main className="mx-auto grid max-w-7xl gap-4 p-4 md:grid-cols-[390px_1fr] md:p-6">
-        <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/70 p-4 md:sticky md:top-4 md:h-[calc(100vh-2rem)] md:overflow-auto">
+      <main className="mx-auto grid max-w-[1400px] gap-6 p-4 md:grid-cols-[390px_1fr] md:p-6 lg:p-8">
+        <section className="glass-panel space-y-6 rounded-2xl p-5 md:sticky md:top-[88px] md:h-[calc(100vh-104px)] md:overflow-y-auto">
           <Control label="Website URL">
             <div className="flex gap-2">
-              <input className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" value={state.url} onChange={(e) => setField('url', e.target.value)} />
-              <button className="rounded-lg bg-indigo-500 px-3 text-sm font-medium hover:bg-indigo-400" onClick={applyUrl}>Load</button>
+              <input className="w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors" value={state.url} onChange={(e) => setField('url', e.target.value)} />
+              <button className="rounded-xl bg-indigo-500 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-all" onClick={applyUrl}>Load</button>
             </div>
           </Control>
 
           <Control label="Preset">
-            <select className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" value={state.preset} onChange={(e) => handlePreset(e.target.value)}>
+            <select className="w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors" value={state.preset} onChange={(e) => handlePreset(e.target.value)}>
               {Object.entries(CANVAS_PRESETS).map(([key, p]) => (
                 <option key={key} value={key}>{p.label}</option>
               ))}
@@ -690,22 +706,23 @@ function App() {
           <NumberField label="Shadow blur" value={state.shadow} onChange={(v) => setField('shadow', v)} />
 
           <Control label="Page zoom (preview)">
-            <div className="flex items-center gap-3">
-              <input type="range" min={0.1} max={2} step={0.05} value={state.zoom} className="w-full" onChange={(e) => setField('zoom', Number(e.target.value))} />
-              <span className="w-14 text-right font-mono text-sm">{state.zoom.toFixed(2)}x</span>
+            <div className="flex items-center gap-3 rounded-xl border border-slate-700/50 bg-slate-950/50 p-2">
+              <input type="range" min={0.1} max={2} step={0.05} value={state.zoom} className="w-full accent-indigo-500" onChange={(e) => setField('zoom', Number(e.target.value))} />
+              <span className="w-14 text-right font-mono text-sm text-indigo-300">{state.zoom.toFixed(2)}x</span>
             </div>
           </Control>
 
           <Control label="Frame style">
-            <select className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" value={state.frameStyle} onChange={(e) => handleFrameStyle(e.target.value)}>
+            <select className="w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors" value={state.frameStyle} onChange={(e) => handleFrameStyle(e.target.value)}>
               <option value="mac-dark">Mac Dark</option>
               <option value="mac-light">Mac Light</option>
               <option value="iphone-dark">iPhone Dark</option>
               <option value="iphone-light">iPhone Light</option>
             </select>
             {!isPhone && (
-              <label className="mt-2 flex items-center gap-2 text-sm text-slate-300">
-                <input type="checkbox" checked={state.showUrlBar} onChange={(e) => setField('showUrlBar', e.target.checked)} /> Show URL bar
+              <label className="mt-2 flex items-center gap-2 text-sm text-slate-300 cursor-pointer group">
+                <input type="checkbox" checked={state.showUrlBar} onChange={(e) => setField('showUrlBar', e.target.checked)} className="rounded border-slate-700 bg-slate-950 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900" />
+                <span className="group-hover:text-slate-200 transition-colors">Show URL bar</span>
               </label>
             )}
             {isPhone && (
@@ -715,53 +732,65 @@ function App() {
             )}
           </Control>
 
+          <div className="h-px bg-slate-800/80 w-full" />
+
           <Control label="Background">
-            <div className="space-y-2">
-              <select className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" value={state.mode} onChange={(e) => setField('mode', e.target.value)}>
+            <div className="space-y-3">
+              <select className="w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors" value={state.mode} onChange={(e) => setField('mode', e.target.value)}>
                 <option value="solid">Solid</option>
                 <option value="gradient">Gradient</option>
               </select>
               {state.mode === 'solid' ? (
                 <ColorRow label="Solid color" color={state.bgSolid} onChange={(v) => setField('bgSolid', v)} />
               ) : (
-                <>
+                <div className="space-y-2 rounded-xl border border-slate-700/30 bg-slate-900/30 p-3">
                   <ColorRow label="Color A" color={state.bgA} onChange={(v) => setField('bgA', v)} />
                   <ColorRow label="Color B" color={state.bgB} onChange={(v) => setField('bgB', v)} />
                   {state.gradientStops === 3 && <ColorRow label="Color C" color={state.bgC} onChange={(v) => setField('bgC', v)} />}
-                  <div className="flex items-center justify-between text-sm">
-                    <span>Stops</span>
-                    <select className="rounded-lg border border-slate-700 bg-slate-950 p-1" value={state.gradientStops} onChange={(e) => setField('gradientStops', Number(e.target.value))}>
+                  <div className="flex items-center justify-between text-sm pt-2 border-t border-slate-800/50">
+                    <span className="text-slate-400">Stops</span>
+                    <select className="rounded-lg border border-slate-700/50 bg-slate-950/50 px-2 py-1 focus:border-indigo-500 focus:outline-none" value={state.gradientStops} onChange={(e) => setField('gradientStops', Number(e.target.value))}>
                       <option value={2}>2</option>
                       <option value={3}>3</option>
                     </select>
                   </div>
                   <NumberField label="Angle" value={state.gradientAngle} onChange={(v) => setField('gradientAngle', v)} />
-                </>
+                </div>
               )}
             </div>
           </Control>
 
+          <div className="h-px bg-slate-800/80 w-full" />
+
           <Control label="Export">
             <TwoCols>
-              <label className="block space-y-1 text-sm">
-                <span className="text-slate-300">Format</span>
-                <select className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" value={state.exportFormat} onChange={(e) => setField('exportFormat', e.target.value)}>
+              <label className="block space-y-1.5 text-sm">
+                <span className="text-slate-400">Format</span>
+                <select className="w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors" value={state.exportFormat} onChange={(e) => setField('exportFormat', e.target.value)}>
                   {Object.entries(EXPORT_FORMATS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
                 </select>
               </label>
               <NumberField label="Quality (0-1)" value={state.exportQuality} onChange={(v) => setField('exportQuality', Math.max(0.1, Math.min(1, v)))} />
             </TwoCols>
-            <button className="mt-2 w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium hover:bg-emerald-400" onClick={exportFrame}>Download image</button>
-            <p className="mt-2 text-xs text-slate-400">Export auto-loads live snapshot; “Load” prefetches/cache it for faster download.</p>
+            <button className="mt-4 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-400 hover:to-teal-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-all transform active:scale-[0.98]" onClick={exportFrame}>
+              Download Image
+            </button>
+            <p className="mt-3 text-xs text-slate-500 leading-relaxed">Export auto-loads live snapshot; “Load” prefetches/cache it for faster download.</p>
           </Control>
 
-          <p className="text-sm text-slate-300">{status}</p>
-          {error && <p className="text-sm text-rose-300">{error}</p>}
+          <div className="text-xs space-y-1 rounded-xl bg-slate-900/50 p-3 border border-slate-800/50">
+            {error ? (
+              <p className="text-rose-400">{error}</p>
+            ) : (
+              <p className="text-slate-400">{status}</p>
+            )}
+          </div>
         </section>
 
-        <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-3" style={getBgStyle(state)}>
-          <div ref={viewportRef} className="h-[75vh] min-h-[420px] w-full flex items-center justify-center">
-            <div className="relative" style={{ width: `${previewLayout.canvasWidth}px`, height: `${previewLayout.canvasHeight}px` }}>
+        <section className="glass-panel relative flex flex-col rounded-2xl overflow-hidden p-1 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMiIgY3k9IjIiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wNSkiLz48L3N2Zz4=')]">
+          <div className="absolute inset-0 z-0 mix-blend-overlay" style={getBgStyle(state)} />
+          <div ref={viewportRef} className="h-[75vh] min-h-[420px] w-full flex items-center justify-center relative z-10">
+            <div className="relative shadow-2xl shadow-black/50" style={{ width: `${previewLayout.canvasWidth}px`, height: `${previewLayout.canvasHeight}px` }}>
 
               {isPhone ? (
                 // ---- iPhone frame preview ----
@@ -949,8 +978,8 @@ function App() {
 
 function Control({ label, children }) {
   return (
-    <label className="block space-y-2">
-      <span className="text-sm font-medium text-slate-300">{label}</span>
+    <label className="block space-y-1.5">
+      <span className="text-sm font-semibold text-slate-300 tracking-wide uppercase text-xs">{label}</span>
       <div>{children}</div>
     </label>
   );
@@ -958,24 +987,24 @@ function Control({ label, children }) {
 
 function NumberField({ label, value, onChange }) {
   return (
-    <label className="block space-y-1 text-sm">
-      <span className="text-slate-300">{label}</span>
-      <input type="number" value={value} min={0} className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2" onChange={(e) => onChange(Number(e.target.value))} />
+    <label className="block space-y-1.5 text-sm">
+      <span className="text-slate-400">{label}</span>
+      <input type="number" value={value} min={0} className="w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors" onChange={(e) => onChange(Number(e.target.value))} />
     </label>
   );
 }
 
 function TwoCols({ children }) {
-  return <div className="grid grid-cols-2 gap-2">{children}</div>;
+  return <div className="grid grid-cols-2 gap-3">{children}</div>;
 }
 
 function ColorRow({ label, color, onChange }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-950 p-2">
+    <div className="flex items-center justify-between rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 transition-colors hover:border-slate-600/50 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500">
       <span className="text-sm text-slate-300">{label}</span>
       <div className="flex items-center gap-2">
         <span className="font-mono text-xs text-slate-400">{color}</span>
-        <input type="color" value={color} onChange={(e) => onChange(e.target.value)} />
+        <input type="color" value={color} onChange={(e) => onChange(e.target.value)} className="focus:outline-none" />
       </div>
     </div>
   );
