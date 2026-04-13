@@ -16,9 +16,10 @@ const EXPORT_FORMATS = {
 };
 
 // iPhone 14/15 logical pixel bezels (at 1x)
-const PHONE_BEZELS = { side: 12, top: 12, bottom: 12 };
+const PHONE_BEZELS = { side: 6, top: 6, bottom: 6 };
 
 const DEFAULTS = {
+  uploadedImage: null,
   url: 'https://example.com',
   mode: 'solid',
   bgSolid: '#111827',
@@ -167,7 +168,9 @@ function App() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    Object.entries(state).forEach(([k, v]) => params.set(k, String(v)));
+    Object.entries(state).forEach(([k, v]) => {
+      if (k !== 'uploadedImage') params.set(k, String(v));
+    });
     window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
   }, [state]);
 
@@ -297,8 +300,24 @@ function App() {
     }
   };
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setError('');
+    try {
+      const bitmap = await createImageBitmap(file);
+      const url = URL.createObjectURL(file);
+      snapshotCacheRef.current = { url: 'uploaded', bitmap };
+      setField('uploadedImage', url);
+      setStatus(`Loaded uploaded image.`);
+    } catch (err) {
+      setError(`Could not load uploaded image: ${err?.message || 'unknown error'}`);
+    }
+  };
+
   const applyUrl = () => {
     setError('');
+    setField('uploadedImage', null);
     if (!normalizedUrl) {
       setError('Enter a valid URL (example: https://example.com).');
       return;
@@ -401,13 +420,37 @@ function App() {
       const sideS = SIDE * fs;
       const topS = TOP * fs;
       const bottomS = BOTTOM * fs;
-      const bodyRad = Math.min(44 * fs, phoneW / 4);
-      const screenRad = Math.min(38 * fs, (phoneW - sideS * 2) / 4);
+      const bodyRad = Math.min(54 * fs, phoneW / 4);
+      const screenRad = Math.min(48 * fs, (phoneW - sideS * 2) / 4);
 
       const screenX = phoneX + sideS;
       const screenY = phoneY + topS;
       const screenW = phoneW - sideS * 2;
       const screenH = phoneH - topS - bottomS;
+
+      // Phone buttons
+      ctx.fillStyle = isDark ? '#3a3a3c' : '#c7c7cc';
+
+      const buttonW = 3 * fs;
+      const buttonRad = 1.5 * fs;
+
+      // Volume Up
+      const volUpY = phoneY + phoneH * 0.25;
+      const volUpH = 45 * fs;
+      roundedRect(ctx, phoneX - buttonW + 0.5, volUpY, buttonW, volUpH, buttonRad);
+      ctx.fill();
+
+      // Volume Down
+      const volDownY = volUpY + volUpH + 15 * fs;
+      const volDownH = 45 * fs;
+      roundedRect(ctx, phoneX - buttonW + 0.5, volDownY, buttonW, volDownH, buttonRad);
+      ctx.fill();
+
+      // Power Button
+      const powerY = phoneY + phoneH * 0.3;
+      const powerH = 65 * fs;
+      roundedRect(ctx, phoneX + phoneW - 0.5, powerY, buttonW, powerH, buttonRad);
+      ctx.fill();
 
       // Phone body + shadow
       ctx.shadowColor = 'rgba(2,6,23,0.45)';
@@ -450,7 +493,7 @@ function App() {
 
         // Time
         ctx.fillStyle = isDark ? '#ffffff' : '#000000';
-        ctx.font = `600 ${16 * fs}px -apple-system, sans-serif`;
+        ctx.font = `600 ${16 * fs}px -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillText('9:41', screenX + 16 * fs, screenY + statusBarH / 2);
@@ -494,12 +537,12 @@ function App() {
         ctx.strokeStyle = iconColor;
         ctx.lineJoin = "round";
         const batBody = new Path2D();
-        batBody.rect(0.5, 0.5, 18, 9);
+        batBody.roundRect(0.5, 0.5, 18, 9, 4);
         ctx.stroke(batBody);
 
         ctx.fillStyle = iconColor;
         const batFill = new Path2D();
-        batFill.roundRect(2, 2, 12, 6, 1);
+        batFill.roundRect(2, 2, 12, 6, 2);
         ctx.fill(batFill);
 
         ctx.beginPath();
@@ -589,8 +632,8 @@ function App() {
 
     // --- Draw snapshot (uses cached snapshot or auto-loads one during export) ---
     let drewSnapshot = false;
-    let snapshot = snapshotCacheRef.current?.url === normalizedUrl ? snapshotCacheRef.current.bitmap : null;
-    if (!snapshot) {
+    let snapshot = snapshotCacheRef.current?.url === 'uploaded' || snapshotCacheRef.current?.url === normalizedUrl ? snapshotCacheRef.current.bitmap : null;
+    if (!snapshot && !state.uploadedImage) {
       setStatus(`Loading snapshot for ${normalizedUrl} before export…`);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
@@ -659,8 +702,8 @@ function App() {
   const phonePrevBottom = PHONE_BEZELS.bottom * phonePrevScale;
   const phonePrevScreenW = previewLayout.frameWidth - phonePrevSide * 2;
   const phonePrevScreenH = previewLayout.frameHeight - phonePrevTop - phonePrevBottom;
-  const phonePrevBodyRad = Math.min(44 * phonePrevScale, previewLayout.frameWidth / 4);
-  const phonePrevScreenRad = Math.min(38 * phonePrevScale, phonePrevScreenW / 4);
+  const phonePrevBodyRad = Math.min(54 * phonePrevScale, previewLayout.frameWidth / 4);
+  const phonePrevScreenRad = Math.min(48 * phonePrevScale, phonePrevScreenW / 4);
   const phonePrevDiH = Math.max(12, 35 * phonePrevScale);
 
   return (
@@ -692,6 +735,10 @@ function App() {
             <div className="flex gap-2">
               <input className="w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors" value={state.url} onChange={(e) => setField('url', e.target.value)} />
               <button className="rounded-xl bg-indigo-500 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-all" onClick={applyUrl}>Load</button>
+              <label className="cursor-pointer rounded-xl bg-slate-800 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-700 focus-within:outline-none focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2 focus-within:ring-offset-slate-900 transition-all flex items-center justify-center whitespace-nowrap">
+                Upload
+                <input type="file" accept="image/*" className="sr-only" onChange={handleImageUpload} />
+              </label>
             </div>
           </Control>
 
@@ -814,12 +861,49 @@ function App() {
                     top: `${previewLayout.frameOffsetY}px`,
                     width: `${previewLayout.frameWidth}px`,
                     height: `${previewLayout.frameHeight}px`,
-                    borderRadius: `${phonePrevBodyRad}px`,
-                    boxShadow: `0 ${Math.round(state.shadow / 6)}px ${state.shadow}px rgba(2,6,23,0.45)`,
-                    backgroundColor: frameTheme.shell,
-                    border: `1.5px solid ${frameTheme.border}`
                   }}
                 >
+                  {/* Buttons */}
+                  <div style={{
+                    position: 'absolute',
+                    left: `-${3 * phonePrevScale}px`,
+                    top: '25%',
+                    width: `${3 * phonePrevScale}px`,
+                    height: `${45 * phonePrevScale}px`,
+                    backgroundColor: isDark ? '#3a3a3c' : '#c7c7cc',
+                    borderTopLeftRadius: `${1.5 * phonePrevScale}px`,
+                    borderBottomLeftRadius: `${1.5 * phonePrevScale}px`,
+                  }} />
+                  <div style={{
+                    position: 'absolute',
+                    left: `-${3 * phonePrevScale}px`,
+                    top: `calc(25% + ${60 * phonePrevScale}px)`,
+                    width: `${3 * phonePrevScale}px`,
+                    height: `${45 * phonePrevScale}px`,
+                    backgroundColor: isDark ? '#3a3a3c' : '#c7c7cc',
+                    borderTopLeftRadius: `${1.5 * phonePrevScale}px`,
+                    borderBottomLeftRadius: `${1.5 * phonePrevScale}px`,
+                  }} />
+                  <div style={{
+                    position: 'absolute',
+                    right: `-${3 * phonePrevScale}px`,
+                    top: '30%',
+                    width: `${3 * phonePrevScale}px`,
+                    height: `${65 * phonePrevScale}px`,
+                    backgroundColor: isDark ? '#3a3a3c' : '#c7c7cc',
+                    borderTopRightRadius: `${1.5 * phonePrevScale}px`,
+                    borderBottomRightRadius: `${1.5 * phonePrevScale}px`,
+                  }} />
+
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      borderRadius: `${phonePrevBodyRad}px`,
+                      boxShadow: `0 ${Math.round(state.shadow / 6)}px ${state.shadow}px rgba(2,6,23,0.45)`,
+                      backgroundColor: frameTheme.shell,
+                      border: `1.5px solid ${frameTheme.border}`
+                    }}
+                  >
                   {/* Screen background & Status Bar */}
                   <div
                     style={{
@@ -852,7 +936,7 @@ function App() {
                         color: isDark ? '#ffffff' : '#000000',
                         fontSize: `${16 * phonePrevScale}px`,
                         fontWeight: 600,
-                        fontFamily: '-apple-system, sans-serif',
+                        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif',
                         letterSpacing: '-0.5px'
                       }}>
                         9:41
@@ -894,8 +978,8 @@ function App() {
                         </svg>
                         {/* Battery */}
                         <svg width={`${24 * phonePrevScale}`} height={`${11 * phonePrevScale}`} viewBox="0 0 24 11" fill="none" stroke={isDark ? '#fff' : '#000'}>
-                          <rect x="0.5" y="0.5" width="20" height="10" rx="3" strokeWidth="1"/>
-                          <rect x="2" y="2" width="13" height="7" rx="1.5" fill={isDark ? '#fff' : '#000'} stroke="none"/>
+                          <rect x="0.5" y="0.5" width="20" height="10" rx="4" strokeWidth="1"/>
+                          <rect x="2" y="2" width="13" height="7" rx="2" fill={isDark ? '#fff' : '#000'} stroke="none"/>
                           <path d="M22 4C23.1046 4 24 4.89543 24 6C24 7.10457 23.1046 8 22 8" strokeWidth="1"/>
                         </svg>
                       </div>
@@ -918,17 +1002,26 @@ function App() {
                           transformOrigin: 'top left'
                         }}
                       >
-                        <iframe
-                          key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
-                          title="Live site preview"
-                          src={normalizedUrl || 'about:blank'}
-                          style={{ width: '100%', height: '100%', border: 0 }}
-                          loading="eager"
-                          referrerPolicy="no-referrer"
-                          sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
-                        />
+                        {state.uploadedImage ? (
+                          <img
+                            src={state.uploadedImage}
+                            alt="Uploaded preview"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <iframe
+                            key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
+                            title="Live site preview"
+                            src={normalizedUrl || 'about:blank'}
+                            style={{ width: '100%', height: '100%', border: 0 }}
+                            loading="eager"
+                            referrerPolicy="no-referrer"
+                            sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
+                          />
+                        )}
                       </div>
                     </div>
+                  </div>
                   </div>
 
                 </div>
@@ -966,15 +1059,23 @@ function App() {
                       transform: `scale(${(previewLayout.frameWidth / state.browserWidth) * state.zoom})`,
                       transformOrigin: 'top left'
                     }}>
-                      <iframe
-                        key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
-                        title="Live site preview"
-                        src={normalizedUrl || 'about:blank'}
-                        className="h-full w-full border-0"
-                        loading="eager"
-                        referrerPolicy="no-referrer"
-                        sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
-                      />
+                      {state.uploadedImage ? (
+                        <img
+                          src={state.uploadedImage}
+                          alt="Uploaded preview"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <iframe
+                          key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
+                          title="Live site preview"
+                          src={normalizedUrl || 'about:blank'}
+                          className="h-full w-full border-0"
+                          loading="eager"
+                          referrerPolicy="no-referrer"
+                          sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
