@@ -16,7 +16,7 @@ const EXPORT_FORMATS = {
 };
 
 // iPhone 14/15 logical pixel bezels (at 1x)
-const PHONE_BEZELS = { side: 13, top: 62, bottom: 13 };
+const PHONE_BEZELS = { side: 12, top: 12, bottom: 12 };
 
 const DEFAULTS = {
   url: 'https://example.com',
@@ -432,8 +432,8 @@ function App() {
       roundedRect(ctx, screenX, screenY, screenW, screenH, screenRad);
       ctx.fill();
 
-      const statusBarH = Math.max(16, 32 * fs);
-      const diH = Math.max(6, 11 * fs);
+      const statusBarH = Math.max(24, 54 * fs);
+      const diH = Math.max(12, 35 * fs);
 
       // Adjust body to be below the status bar
       bodyX = screenX;
@@ -450,7 +450,7 @@ function App() {
 
         // Time
         ctx.fillStyle = isDark ? '#ffffff' : '#000000';
-        ctx.font = `600 ${14 * fs}px -apple-system, sans-serif`;
+        ctx.font = `600 ${16 * fs}px -apple-system, sans-serif`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillText('9:41', screenX + 16 * fs, screenY + statusBarH / 2);
@@ -458,7 +458,7 @@ function App() {
         // Dynamic Island centered in status bar
         const diW = screenW * 0.3;
         const diX = screenX + (screenW - diW) / 2;
-        const diY = screenY + (statusBarH - diH) / 2;
+        const diY = screenY + 11 * fs;
 
         ctx.fillStyle = '#000000';
         roundedRect(ctx, diX, diY, diW, diH, diH / 2);
@@ -471,32 +471,45 @@ function App() {
         ctx.arc(diX + diH * 0.4 + dotSize / 2, diY + diH / 2, dotSize / 2, 0, Math.PI * 2);
         ctx.fill();
 
-        // WiFi icon placeholder
+        // Icons
         const iconColor = isDark ? '#ffffff' : '#000000';
         ctx.fillStyle = iconColor;
-        ctx.strokeStyle = iconColor;
-        ctx.lineWidth = 1 * fs;
-        const rightIconsX = screenX + screenW - 40 * fs;
 
-        // Very basic WiFi curves
-        ctx.beginPath();
-        ctx.arc(rightIconsX, screenY + statusBarH / 2, 2 * fs, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(rightIconsX, screenY + statusBarH / 2 + 1 * fs, 5 * fs, Math.PI * 1.25, Math.PI * 1.75);
-        ctx.stroke();
+        const rightIconsX = screenX + screenW - 75 * fs;
+        const iconY = screenY + (statusBarH - 12 * fs) / 2;
+
+        // WiFi
+        ctx.save();
+        ctx.translate(rightIconsX, iconY + 1 * fs);
+        ctx.scale(0.8 * fs, 0.8 * fs);
+        const wifiPath = new Path2D("M12 21C13.1046 21 14 20.1046 14 19C14 17.8954 13.1046 17 12 17C10.8954 17 10 17.8954 10 19C10 20.1046 10.8954 21 12 21Z M7.75736 14.7574C10.1005 12.4142 13.8995 12.4142 16.2426 14.7574L17.6569 13.3431C14.5325 10.2188 9.46751 10.2188 6.34315 13.3431L7.75736 14.7574Z M3.51472 10.5147C8.19821 5.83124 15.8018 5.83124 20.4853 10.5147L21.8995 9.10051C16.435 3.63599 7.56497 3.63599 2.10051 9.10051L3.51472 10.5147Z");
+        ctx.fill(wifiPath);
+        ctx.restore();
 
         // Battery
-        const batX = rightIconsX + 10 * fs;
-        const batY = screenY + (statusBarH - 10 * fs) / 2;
-        ctx.strokeRect(batX, batY, 18 * fs, 10 * fs);
-        ctx.fillRect(batX + 2 * fs, batY + 2 * fs, 12 * fs, 6 * fs);
+        ctx.save();
+        ctx.translate(rightIconsX + 24 * fs, iconY);
+        ctx.scale(1.1 * fs, 1.1 * fs);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = iconColor;
+        ctx.lineJoin = "round";
+        const batBody = new Path2D();
+        batBody.rect(0.5, 0.5, 18, 9);
+        ctx.stroke(batBody);
+
+        ctx.fillStyle = iconColor;
+        const batFill = new Path2D();
+        batFill.roundRect(2, 2, 12, 6, 1);
+        ctx.fill(batFill);
+
         ctx.beginPath();
-        ctx.moveTo(batX + 18 * fs, batY + 3 * fs);
-        ctx.lineTo(batX + 20 * fs, batY + 3 * fs);
-        ctx.lineTo(batX + 20 * fs, batY + 7 * fs);
-        ctx.lineTo(batX + 18 * fs, batY + 7 * fs);
+        ctx.moveTo(20, 3.5);
+        ctx.lineTo(21, 3.5);
+        ctx.quadraticCurveTo(21.5, 4, 21.5, 5);
+        ctx.quadraticCurveTo(21.5, 6, 21, 6.5);
+        ctx.lineTo(20, 6.5);
         ctx.stroke();
+        ctx.restore();
       };
     } else {
       // --- Mac browser frame ---
@@ -648,7 +661,7 @@ function App() {
   const phonePrevScreenH = previewLayout.frameHeight - phonePrevTop - phonePrevBottom;
   const phonePrevBodyRad = Math.min(44 * phonePrevScale, previewLayout.frameWidth / 4);
   const phonePrevScreenRad = Math.min(38 * phonePrevScale, phonePrevScreenW / 4);
-  const phonePrevDiH = Math.max(5, 11 * phonePrevScale);
+  const phonePrevDiH = Math.max(12, 35 * phonePrevScale);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500/30">
@@ -824,7 +837,7 @@ function App() {
                     <div
                       style={{
                         width: '100%',
-                        height: `${phonePrevDiH * 2}px`,
+                        height: `${54 * phonePrevScale}px`,
                         backgroundColor: frameTheme.topFill,
                         position: 'relative',
                         zIndex: 20,
@@ -837,7 +850,7 @@ function App() {
                       {/* Time */}
                       <span style={{
                         color: isDark ? '#ffffff' : '#000000',
-                        fontSize: `${14 * phonePrevScale}px`,
+                        fontSize: `${16 * phonePrevScale}px`,
                         fontWeight: 600,
                         fontFamily: '-apple-system, sans-serif',
                         letterSpacing: '-0.5px'
@@ -849,9 +862,9 @@ function App() {
                       <div
                         style={{
                           position: 'absolute',
-                          top: '50%',
+                          top: `${11 * phonePrevScale}px`,
                           left: '50%',
-                          transform: 'translate(-50%, -50%)',
+                          transform: 'translateX(-50%)',
                           width: `${phonePrevScreenW * 0.3}px`,
                           height: `${phonePrevDiH}px`,
                           borderRadius: `${phonePrevDiH / 2}px`,
@@ -874,17 +887,16 @@ function App() {
                       </div>
 
                       {/* Icons */}
-                      <div style={{ display: 'flex', gap: `${4 * phonePrevScale}px`, alignItems: 'center' }}>
-                        {/* WiFi icon simple representation */}
-                        <svg width={`${14 * phonePrevScale}`} height={`${10 * phonePrevScale}`} viewBox="0 0 14 10" fill={isDark ? '#fff' : '#000'}>
-                          <path d="M7 10C8.10457 10 9 9.10457 9 8C9 6.89543 8.10457 6 7 6C5.89543 6 5 6.89543 5 8C5 9.10457 5.89543 10 7 10Z" />
-                          <path d="M3.46447 4.53553C5.41709 2.58291 8.58291 2.58291 10.5355 4.53553L11.9497 3.12132C9.21573 0.387302 4.78427 0.387302 2.05025 3.12132L3.46447 4.53553Z" />
+                      <div style={{ display: 'flex', gap: `${6 * phonePrevScale}px`, alignItems: 'center', marginRight: `${8 * phonePrevScale}px` }}>
+                        {/* WiFi */}
+                        <svg width={`${19 * phonePrevScale}`} height={`${19 * phonePrevScale}`} viewBox="0 0 24 24" fill={isDark ? '#fff' : '#000'}>
+                          <path d="M12 21C13.1046 21 14 20.1046 14 19C14 17.8954 13.1046 17 12 17C10.8954 17 10 17.8954 10 19C10 20.1046 10.8954 21 12 21Z M7.75736 14.7574C10.1005 12.4142 13.8995 12.4142 16.2426 14.7574L17.6569 13.3431C14.5325 10.2188 9.46751 10.2188 6.34315 13.3431L7.75736 14.7574Z M3.51472 10.5147C8.19821 5.83124 15.8018 5.83124 20.4853 10.5147L21.8995 9.10051C16.435 3.63599 7.56497 3.63599 2.10051 9.10051L3.51472 10.5147Z" />
                         </svg>
-                        {/* Battery icon */}
-                        <svg width={`${22 * phonePrevScale}`} height={`${10 * phonePrevScale}`} viewBox="0 0 22 10" fill="none" stroke={isDark ? '#fff' : '#000'}>
-                          <rect x="0.5" y="0.5" width="18" height="9" rx="2.5" strokeWidth="1"/>
-                          <rect x="2" y="2" width="12" height="6" rx="1" fill={isDark ? '#fff' : '#000'} stroke="none"/>
-                          <path d="M20 3.5C21 3.5 21.5 4 21.5 5C21.5 6 21 6.5 20 6.5" strokeWidth="1"/>
+                        {/* Battery */}
+                        <svg width={`${24 * phonePrevScale}`} height={`${11 * phonePrevScale}`} viewBox="0 0 24 11" fill="none" stroke={isDark ? '#fff' : '#000'}>
+                          <rect x="0.5" y="0.5" width="20" height="10" rx="3" strokeWidth="1"/>
+                          <rect x="2" y="2" width="13" height="7" rx="1.5" fill={isDark ? '#fff' : '#000'} stroke="none"/>
+                          <path d="M22 4C23.1046 4 24 4.89543 24 6C24 7.10457 23.1046 8 22 8" strokeWidth="1"/>
                         </svg>
                       </div>
                     </div>
@@ -894,14 +906,14 @@ function App() {
                       style={{
                         position: 'relative',
                         width: '100%',
-                        height: `calc(100% - ${phonePrevDiH * 2}px)`,
+                        height: `calc(100% - ${54 * phonePrevScale}px)`,
                         overflow: 'hidden'
                       }}
                     >
                       <div
                         style={{
                           width: `${state.browserWidth / state.zoom}px`,
-                          height: `${(state.browserHeight - phonePrevDiH * 2 / phonePrevScale) / state.zoom}px`,
+                          height: `${(state.browserHeight - 54) / state.zoom}px`,
                           transform: `scale(${(phonePrevScreenW / state.browserWidth) * state.zoom})`,
                           transformOrigin: 'top left'
                         }}
