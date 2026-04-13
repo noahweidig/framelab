@@ -228,7 +228,7 @@ function App() {
         ? {
             shell: '#1c1c1e',
             pageBg: '#000000',
-            topFill: '#000000',
+            topFill: '#1c1c1e',
             urlPill: '#2c2c2e',
             urlText: '#8e8e93',
             border: '#3a3a3c',
@@ -345,14 +345,17 @@ function App() {
     const fmt = EXPORT_FORMATS[state.exportFormat] || EXPORT_FORMATS.png;
     const { canvasWidth, canvasHeight, browserWidth, browserHeight, padding, radius, showUrlBar } = state;
 
+    // Use 2x resolution for export to prevent blurriness
+    const pixelRatio = 2;
     const canvas = document.createElement('canvas');
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
+    canvas.width = canvasWidth * pixelRatio;
+    canvas.height = canvasHeight * pixelRatio;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       setError('Canvas rendering is not available in this browser.');
       return;
     }
+    ctx.scale(pixelRatio, pixelRatio);
 
     // --- Background ---
     if (state.mode === 'solid') {
@@ -429,28 +432,71 @@ function App() {
       roundedRect(ctx, screenX, screenY, screenW, screenH, screenRad);
       ctx.fill();
 
+      const statusBarH = Math.max(16, 32 * fs);
+      const diH = Math.max(6, 11 * fs);
+
+      // Adjust body to be below the status bar
       bodyX = screenX;
-      bodyY = screenY;
+      bodyY = screenY + statusBarH;
       bodyW = screenW;
-      bodyH = screenH;
+      bodyH = screenH - statusBarH;
+
       clipBody = () => { roundedRect(ctx, bodyX, bodyY, bodyW, bodyH, screenRad); };
 
       postSnapshotDraw = () => {
-        // Top fill (no notch look)
-        const fillPad = Math.max(4, 6 * fs);
-        const fillH = Math.max(8, 16 * fs);
+        // Status Bar Top Fill
         ctx.fillStyle = frameTheme.topFill;
-        roundedRect(ctx, screenX + fillPad, screenY, screenW - fillPad * 2, fillH, fillH / 2);
-        ctx.fill();
+        ctx.fillRect(screenX, screenY, screenW, statusBarH);
 
-        // Dynamic Island centered at top
+        // Time
+        ctx.fillStyle = isDark ? '#ffffff' : '#000000';
+        ctx.font = `600 ${14 * fs}px -apple-system, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('9:41', screenX + 16 * fs, screenY + statusBarH / 2);
+
+        // Dynamic Island centered in status bar
         const diW = screenW * 0.3;
-        const diH = Math.max(6, 11 * fs);
         const diX = screenX + (screenW - diW) / 2;
-        const diY = phoneY + (topS - diH) / 2;
+        const diY = screenY + (statusBarH - diH) / 2;
+
         ctx.fillStyle = '#000000';
         roundedRect(ctx, diX, diY, diW, diH, diH / 2);
         ctx.fill();
+
+        // Camera dot
+        const dotSize = diH * 0.4;
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.arc(diX + diH * 0.4 + dotSize / 2, diY + diH / 2, dotSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // WiFi icon placeholder
+        const iconColor = isDark ? '#ffffff' : '#000000';
+        ctx.fillStyle = iconColor;
+        ctx.strokeStyle = iconColor;
+        ctx.lineWidth = 1 * fs;
+        const rightIconsX = screenX + screenW - 40 * fs;
+
+        // Very basic WiFi curves
+        ctx.beginPath();
+        ctx.arc(rightIconsX, screenY + statusBarH / 2, 2 * fs, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(rightIconsX, screenY + statusBarH / 2 + 1 * fs, 5 * fs, Math.PI * 1.25, Math.PI * 1.75);
+        ctx.stroke();
+
+        // Battery
+        const batX = rightIconsX + 10 * fs;
+        const batY = screenY + (statusBarH - 10 * fs) / 2;
+        ctx.strokeRect(batX, batY, 18 * fs, 10 * fs);
+        ctx.fillRect(batX + 2 * fs, batY + 2 * fs, 12 * fs, 6 * fs);
+        ctx.beginPath();
+        ctx.moveTo(batX + 18 * fs, batY + 3 * fs);
+        ctx.lineTo(batX + 20 * fs, batY + 3 * fs);
+        ctx.lineTo(batX + 20 * fs, batY + 7 * fs);
+        ctx.lineTo(batX + 18 * fs, batY + 7 * fs);
+        ctx.stroke();
       };
     } else {
       // --- Mac browser frame ---
@@ -732,33 +778,7 @@ function App() {
                     border: `1.5px solid ${frameTheme.border}`
                   }}
                 >
-                  {/* Dynamic island */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: `${phonePrevSide + Math.max(4, 6 * phonePrevScale)}px`,
-                      top: `${phonePrevTop}px`,
-                      width: `${phonePrevScreenW - Math.max(4, 6 * phonePrevScale) * 2}px`,
-                      height: `${Math.max(8, 16 * phonePrevScale)}px`,
-                      borderRadius: `${Math.max(4, 8 * phonePrevScale)}px`,
-                      backgroundColor: frameTheme.topFill
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: `${(phonePrevTop - phonePrevDiH) / 2}px`,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: `${phonePrevScreenW * 0.3}px`,
-                      height: `${phonePrevDiH}px`,
-                      borderRadius: `${phonePrevDiH / 2}px`,
-                      backgroundColor: '#000',
-                      zIndex: 10
-                    }}
-                  />
-
-                  {/* Screen area */}
+                  {/* Screen background & Status Bar */}
                   <div
                     style={{
                       position: 'absolute',
@@ -771,24 +791,102 @@ function App() {
                       backgroundColor: frameTheme.pageBg
                     }}
                   >
-                    {/* iframe scaled so it renders at state.browserWidth viewport */}
+                    {/* Status Bar Fill */}
                     <div
                       style={{
-                        width: `${state.browserWidth}px`,
-                        height: `${state.browserHeight}px`,
-                        transform: `scale(${(phonePrevScreenW / state.browserWidth) * state.zoom})`,
-                        transformOrigin: 'top left'
+                        width: '100%',
+                        height: `${phonePrevDiH * 2}px`,
+                        backgroundColor: frameTheme.topFill,
+                        position: 'relative',
+                        zIndex: 20,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: `0 ${16 * phonePrevScale}px`
                       }}
                     >
-                      <iframe
-                        key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
-                        title="Live site preview"
-                        src={normalizedUrl || 'about:blank'}
-                        style={{ width: '100%', height: '100%', border: 0 }}
-                        loading="eager"
-                        referrerPolicy="no-referrer"
-                        sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
-                      />
+                      {/* Time */}
+                      <span style={{
+                        color: isDark ? '#ffffff' : '#000000',
+                        fontSize: `${14 * phonePrevScale}px`,
+                        fontWeight: 600,
+                        fontFamily: '-apple-system, sans-serif',
+                        letterSpacing: '-0.5px'
+                      }}>
+                        9:41
+                      </span>
+
+                      {/* Dynamic Island */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          width: `${phonePrevScreenW * 0.3}px`,
+                          height: `${phonePrevDiH}px`,
+                          borderRadius: `${phonePrevDiH / 2}px`,
+                          backgroundColor: '#000',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'flex-start',
+                          paddingLeft: `${phonePrevDiH * 0.25}px`
+                        }}
+                      >
+                        {/* Camera dot */}
+                        <div style={{
+                          width: `${phonePrevDiH * 0.4}px`,
+                          height: `${phonePrevDiH * 0.4}px`,
+                          borderRadius: '50%',
+                          backgroundColor: '#111',
+                          border: `${Math.max(1, phonePrevDiH * 0.05)}px solid #222`,
+                          boxShadow: 'inset 0 0 2px rgba(255,255,255,0.2)'
+                        }} />
+                      </div>
+
+                      {/* Icons */}
+                      <div style={{ display: 'flex', gap: `${4 * phonePrevScale}px`, alignItems: 'center' }}>
+                        {/* WiFi icon simple representation */}
+                        <svg width={`${14 * phonePrevScale}`} height={`${10 * phonePrevScale}`} viewBox="0 0 14 10" fill={isDark ? '#fff' : '#000'}>
+                          <path d="M7 10C8.10457 10 9 9.10457 9 8C9 6.89543 8.10457 6 7 6C5.89543 6 5 6.89543 5 8C5 9.10457 5.89543 10 7 10Z" />
+                          <path d="M3.46447 4.53553C5.41709 2.58291 8.58291 2.58291 10.5355 4.53553L11.9497 3.12132C9.21573 0.387302 4.78427 0.387302 2.05025 3.12132L3.46447 4.53553Z" />
+                        </svg>
+                        {/* Battery icon */}
+                        <svg width={`${22 * phonePrevScale}`} height={`${10 * phonePrevScale}`} viewBox="0 0 22 10" fill="none" stroke={isDark ? '#fff' : '#000'}>
+                          <rect x="0.5" y="0.5" width="18" height="9" rx="2.5" strokeWidth="1"/>
+                          <rect x="2" y="2" width="12" height="6" rx="1" fill={isDark ? '#fff' : '#000'} stroke="none"/>
+                          <path d="M20 3.5C21 3.5 21.5 4 21.5 5C21.5 6 21 6.5 20 6.5" strokeWidth="1"/>
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* iframe area - below the status bar */}
+                    <div
+                      style={{
+                        position: 'relative',
+                        width: '100%',
+                        height: `calc(100% - ${phonePrevDiH * 2}px)`,
+                        overflow: 'hidden'
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${state.browserWidth / state.zoom}px`,
+                          height: `${(state.browserHeight - phonePrevDiH * 2 / phonePrevScale) / state.zoom}px`,
+                          transform: `scale(${(phonePrevScreenW / state.browserWidth) * state.zoom})`,
+                          transformOrigin: 'top left'
+                        }}
+                      >
+                        <iframe
+                          key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
+                          title="Live site preview"
+                          src={normalizedUrl || 'about:blank'}
+                          style={{ width: '100%', height: '100%', border: 0 }}
+                          loading="eager"
+                          referrerPolicy="no-referrer"
+                          sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -820,8 +918,13 @@ function App() {
                       </div>
                     )}
                   </div>
-                  <div style={{ height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg, overflow: 'hidden', borderBottomLeftRadius: `${state.radius}px`, borderBottomRightRadius: `${state.radius}px` }}>
-                    <div style={{ width: `${100 / state.zoom}%`, height: `${100 / state.zoom}%`, transform: `scale(${state.zoom})`, transformOrigin: 'top left' }}>
+                  <div style={{ position: 'relative', height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg, overflow: 'hidden', borderBottomLeftRadius: `${state.radius}px`, borderBottomRightRadius: `${state.radius}px` }}>
+                    <div style={{
+                      width: `${state.browserWidth / state.zoom}px`,
+                      height: `${(state.browserHeight - (state.showUrlBar ? 52 : 34)) / state.zoom}px`,
+                      transform: `scale(${(previewLayout.frameWidth / state.browserWidth) * state.zoom})`,
+                      transformOrigin: 'top left'
+                    }}>
                       <iframe
                         key={`${state.url}|${state.browserWidth}x${state.browserHeight}`}
                         title="Live site preview"
