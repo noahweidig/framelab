@@ -38,6 +38,10 @@ const DEFAULTS = {
   radius: 20,
   shadow: 38,
   frameStyle: 'mac-dark',
+  uploadSizing: 'anchor',
+  uploadAnchor: 'center',
+  uploadedImageWidth: 0,
+  uploadedImageHeight: 0,
   showUrlBar: false,
   exportFormat: 'png',
   exportQuality: 0.92
@@ -147,6 +151,21 @@ function getBgStyle(state) {
   return { background: `linear-gradient(${state.gradientAngle}deg, ${stops})` };
 }
 
+function getAnchorAlignment(anchor) {
+  switch (anchor) {
+    case 'top':
+      return { x: 0.5, y: 0 };
+    case 'bottom':
+      return { x: 0.5, y: 1 };
+    case 'left':
+      return { x: 0, y: 0.5 };
+    case 'right':
+      return { x: 1, y: 0.5 };
+    default:
+      return { x: 0.5, y: 0.5 };
+  }
+}
+
 function App() {
   const [state, setState] = useState(parseUrlState);
   const [status, setStatus] = useState('Preview is ready. Adjust zoom and export a direct image file.');
@@ -165,6 +184,10 @@ function App() {
 
   const isPhone = state.frameStyle.startsWith('iphone');
   const isDark = state.frameStyle.includes('dark');
+  const uploadAspectRatio =
+    state.uploadedImageWidth > 0 && state.uploadedImageHeight > 0
+      ? state.uploadedImageWidth / state.uploadedImageHeight
+      : null;
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -224,6 +247,14 @@ function App() {
       window.removeEventListener('resize', updateFrameSize);
     };
   }, [state.browserWidth, state.browserHeight, state.canvasWidth, state.canvasHeight, state.padding, state.frameStyle]);
+
+  useEffect(() => {
+    if (!state.uploadedImage || state.uploadSizing !== 'fit' || !uploadAspectRatio) return;
+    const fittedHeight = Math.max(1, Math.round(state.browserWidth / uploadAspectRatio));
+    if (fittedHeight !== state.browserHeight) {
+      setField('browserHeight', fittedHeight);
+    }
+  }, [state.uploadedImage, state.uploadSizing, state.browserWidth, state.browserHeight, uploadAspectRatio]);
 
   const frameTheme = useMemo(() => {
     if (state.frameStyle.startsWith('iphone')) {
@@ -308,7 +339,12 @@ function App() {
       const bitmap = await createImageBitmap(file);
       const url = URL.createObjectURL(file);
       snapshotCacheRef.current = { url: 'uploaded', bitmap };
-      setField('uploadedImage', url);
+      setState((prev) => ({
+        ...prev,
+        uploadedImage: url,
+        uploadedImageWidth: bitmap.width,
+        uploadedImageHeight: bitmap.height
+      }));
       setStatus(`Loaded uploaded image.`);
     } catch (err) {
       setError(`Could not load uploaded image: ${err?.message || 'unknown error'}`);
@@ -647,14 +683,27 @@ function App() {
       }
     }
     if (snapshot) {
-      const snapshotRatio = snapshot.width / snapshot.height;
-      const drawW = bodyW;
-      const drawH = bodyW / snapshotRatio;
+      const useAnchor = state.uploadSizing === 'anchor' && snapshotCacheRef.current?.url === 'uploaded';
+      const { x: anchorX, y: anchorY } = getAnchorAlignment(useAnchor ? state.uploadAnchor : 'center');
+
+      const srcRatio = snapshot.width / snapshot.height;
+      const destRatio = bodyW / bodyH;
+      let drawW;
+      let drawH;
+      if (srcRatio > destRatio) {
+        drawH = bodyH;
+        drawW = bodyH * srcRatio;
+      } else {
+        drawW = bodyW;
+        drawH = bodyW / srcRatio;
+      }
+      const drawX = bodyX - (drawW - bodyW) * anchorX;
+      const drawY = bodyY - (drawH - bodyH) * anchorY;
 
       ctx.save();
       clipBody();
       ctx.clip();
-      ctx.drawImage(snapshot, bodyX, bodyY, drawW, drawH);
+      ctx.drawImage(snapshot, drawX, drawY, drawW, drawH);
       ctx.restore();
       drewSnapshot = true;
     }
@@ -741,6 +790,31 @@ function App() {
               </label>
             </div>
           </Control>
+          {state.uploadedImage && (
+            <Control label="Upload fit">
+              <select
+                className="w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors"
+                value={state.uploadSizing}
+                onChange={(e) => setField('uploadSizing', e.target.value)}
+              >
+                <option value="anchor">Crop + anchor</option>
+                <option value="fit">Auto-resize browser to image ratio</option>
+              </select>
+              {state.uploadSizing === 'anchor' && (
+                <select
+                  className="mt-2 w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors"
+                  value={state.uploadAnchor}
+                  onChange={(e) => setField('uploadAnchor', e.target.value)}
+                >
+                  <option value="center">Center</option>
+                  <option value="top">Top</option>
+                  <option value="bottom">Bottom</option>
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                </select>
+              )}
+            </Control>
+          )}
 
           <Control label="Preset">
             <select className="w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors" value={state.preset} onChange={(e) => handlePreset(e.target.value)}>
@@ -1006,7 +1080,12 @@ function App() {
                           <img
                             src={state.uploadedImage}
                             alt="Uploaded preview"
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: state.uploadSizing === 'fit' ? 'contain' : 'cover',
+                              objectPosition: state.uploadAnchor
+                            }}
                           />
                         ) : (
                           <iframe
@@ -1063,7 +1142,12 @@ function App() {
                         <img
                           src={state.uploadedImage}
                           alt="Uploaded preview"
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: state.uploadSizing === 'fit' ? 'contain' : 'cover',
+                            objectPosition: state.uploadAnchor
+                          }}
                         />
                       ) : (
                         <iframe
