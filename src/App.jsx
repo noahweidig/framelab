@@ -129,6 +129,10 @@ async function loadSnapshotWithFallbacks(url, signal, snapshotWidth = 1600, snap
   throw new Error(failures.length ? failures.join(' | ') : 'All snapshot providers failed');
 }
 
+function getSnapshotCacheKey(url, snapshotWidth, snapshotHeight) {
+  return `${url}|${snapshotWidth}x${snapshotHeight}`;
+}
+
 function parseUrlState() {
   const params = new URLSearchParams(window.location.search);
   const parsed = { ...DEFAULTS };
@@ -348,7 +352,7 @@ function App() {
     try {
       const bitmap = await createImageBitmap(file);
       const url = URL.createObjectURL(file);
-      snapshotCacheRef.current = { url: 'uploaded', bitmap };
+      snapshotCacheRef.current = { key: 'uploaded', bitmap };
       setState((prev) => ({
         ...prev,
         uploadedImage: url,
@@ -372,12 +376,13 @@ function App() {
     const url = normalizedUrl;
     const snapshotWidth = isPhone ? Math.max(390, state.browserWidth) : 1600;
     const snapshotHeight = isPhone ? Math.max(844, state.browserHeight) : 900;
+    const cacheKey = getSnapshotCacheKey(url, snapshotWidth, snapshotHeight);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     loadSnapshotWithFallbacks(url, controller.signal, snapshotWidth, snapshotHeight)
       .then((bitmap) => {
         clearTimeout(timeout);
-        snapshotCacheRef.current = { url, bitmap };
+        snapshotCacheRef.current = { key: cacheKey, bitmap };
         setStatus(`Snapshot cached for ${url}. Download is now instant unless URL changes.`);
       })
       .catch((err) => {
@@ -550,6 +555,10 @@ function App() {
       };
 
       postSnapshotDraw = () => {
+        ctx.save();
+        roundedRect(ctx, screenX, screenY, screenW, screenH, screenRad);
+        ctx.clip();
+
         // Status Bar Top Fill
         ctx.fillStyle = frameTheme.topFill;
         ctx.fillRect(screenX, screenY, screenW, statusBarH);
@@ -615,6 +624,8 @@ function App() {
         ctx.quadraticCurveTo(21.5, 6, 21, 6.5);
         ctx.lineTo(20, 6.5);
         ctx.stroke();
+        ctx.restore();
+
         ctx.restore();
       };
     } else {
@@ -695,16 +706,20 @@ function App() {
 
     // --- Draw snapshot (uses cached snapshot or auto-loads one during export) ---
     let drewSnapshot = false;
-    let snapshot = snapshotCacheRef.current?.url === 'uploaded' || snapshotCacheRef.current?.url === normalizedUrl ? snapshotCacheRef.current.bitmap : null;
+    const snapshotWidth = isPhone ? Math.max(390, browserWidth) : 1600;
+    const snapshotHeight = isPhone ? Math.max(844, browserHeight) : 900;
+    const snapshotCacheKey = getSnapshotCacheKey(normalizedUrl, snapshotWidth, snapshotHeight);
+    let snapshot =
+      snapshotCacheRef.current?.key === 'uploaded' || snapshotCacheRef.current?.key === snapshotCacheKey
+        ? snapshotCacheRef.current.bitmap
+        : null;
     if (!snapshot && !state.uploadedImage) {
       setStatus(`Loading snapshot for ${normalizedUrl} before export…`);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
       try {
-        const snapshotWidth = isPhone ? Math.max(390, browserWidth) : 1600;
-        const snapshotHeight = isPhone ? Math.max(844, browserHeight) : 900;
         snapshot = await loadSnapshotWithFallbacks(normalizedUrl, controller.signal, snapshotWidth, snapshotHeight);
-        snapshotCacheRef.current = { url: normalizedUrl, bitmap: snapshot };
+        snapshotCacheRef.current = { key: snapshotCacheKey, bitmap: snapshot };
       } catch {
         // keep fallback placeholder behavior if all providers fail
       } finally {
@@ -712,7 +727,7 @@ function App() {
       }
     }
     if (snapshot) {
-      const useAnchor = state.uploadSizing === 'anchor' && snapshotCacheRef.current?.url === 'uploaded';
+      const useAnchor = state.uploadSizing === 'anchor' && snapshotCacheRef.current?.key === 'uploaded';
       const { x: anchorX, y: anchorY } = getAnchorAlignment(useAnchor ? state.uploadAnchor : 'center');
 
       const srcRatio = snapshot.width / snapshot.height;
