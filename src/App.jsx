@@ -250,11 +250,21 @@ function App() {
 
   useEffect(() => {
     if (!state.uploadedImage || state.uploadSizing !== 'fit' || !uploadAspectRatio) return;
-    const fittedHeight = Math.max(1, Math.round(state.browserWidth / uploadAspectRatio));
+    const viewportTopInset = state.frameStyle.startsWith('iphone') ? 54 : state.showUrlBar ? 52 : 34;
+    const fittedViewportHeight = Math.max(1, Math.round(state.browserWidth / uploadAspectRatio));
+    const fittedHeight = fittedViewportHeight + viewportTopInset;
     if (fittedHeight !== state.browserHeight) {
       setField('browserHeight', fittedHeight);
     }
-  }, [state.uploadedImage, state.uploadSizing, state.browserWidth, state.browserHeight, uploadAspectRatio]);
+  }, [
+    state.uploadedImage,
+    state.uploadSizing,
+    state.browserWidth,
+    state.browserHeight,
+    state.frameStyle,
+    state.showUrlBar,
+    uploadAspectRatio
+  ]);
 
   const frameTheme = useMemo(() => {
     if (state.frameStyle.startsWith('iphone')) {
@@ -801,17 +811,20 @@ function App() {
                 <option value="fit">Auto-resize browser to image ratio</option>
               </select>
               {state.uploadSizing === 'anchor' && (
-                <select
-                  className="mt-2 w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors"
-                  value={state.uploadAnchor}
-                  onChange={(e) => setField('uploadAnchor', e.target.value)}
-                >
-                  <option value="center">Center</option>
-                  <option value="top">Top</option>
-                  <option value="bottom">Bottom</option>
-                  <option value="left">Left</option>
-                  <option value="right">Right</option>
-                </select>
+                <label className="mt-2 block space-y-1 text-xs text-slate-400">
+                  <span>Anchor position</span>
+                  <select
+                    className="w-full rounded-xl border border-slate-700/50 bg-slate-950/50 p-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors"
+                    value={state.uploadAnchor}
+                    onChange={(e) => setField('uploadAnchor', e.target.value)}
+                  >
+                    <option value="center">Center</option>
+                    <option value="top">Top</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="left">Left</option>
+                    <option value="right">Right</option>
+                  </select>
+                </label>
               )}
             </Control>
           )}
@@ -1083,7 +1096,7 @@ function App() {
                             style={{
                               width: '100%',
                               height: '100%',
-                              objectFit: state.uploadSizing === 'fit' ? 'contain' : 'cover',
+                              objectFit: 'cover',
                               objectPosition: state.uploadAnchor
                             }}
                           />
@@ -1145,7 +1158,7 @@ function App() {
                           style={{
                             width: '100%',
                             height: '100%',
-                            objectFit: state.uploadSizing === 'fit' ? 'contain' : 'cover',
+                            objectFit: 'cover',
                             objectPosition: state.uploadAnchor
                           }}
                         />
