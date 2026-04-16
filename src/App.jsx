@@ -47,11 +47,11 @@ const DEFAULTS = {
   exportQuality: 0.92
 };
 
-async function loadRemoteSnapshot(url, signal) {
+async function loadRemoteSnapshot(url, signal, snapshotWidth = 1600) {
   // Thum.io expects the target URL as a literal path suffix, NOT percent-encoded
   try {
     const response = await fetch(
-      `https://image.thum.io/get/width/1600/noanimate/${url}`,
+      `https://image.thum.io/get/width/${snapshotWidth}/noanimate/${url}`,
       { mode: 'cors', signal }
     );
     if (response.ok) {
@@ -88,20 +88,20 @@ function normalizeUrl(input) {
   }
 }
 
-async function loadSnapshotWithFallbacks(url, signal) {
+async function loadSnapshotWithFallbacks(url, signal, snapshotWidth = 1600, snapshotHeight = 900) {
   const providers = [
     async () => {
       const backendRes = await fetch(
-        `/api/snapshot?url=${encodeURIComponent(url)}&w=1600&h=900`,
+        `/api/snapshot?url=${encodeURIComponent(url)}&w=${snapshotWidth}&h=${snapshotHeight}`,
         { signal }
       );
       if (!backendRes.ok) throw new Error(`Backend snapshot returned ${backendRes.status}`);
       return createImageBitmap(await backendRes.blob());
     },
-    () => loadRemoteSnapshot(url, signal),
+    () => loadRemoteSnapshot(url, signal, snapshotWidth),
     async () => {
       const res = await fetch(
-        `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=1600`,
+        `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=${snapshotWidth}`,
         { mode: 'cors', signal }
       );
       if (!res.ok) throw new Error(`MShots returned ${res.status}`);
@@ -109,7 +109,7 @@ async function loadSnapshotWithFallbacks(url, signal) {
     },
     async () => {
       const res = await fetch(
-        `https://r.jina.ai/http://image.thum.io/get/width/1600/noanimate/${url}`,
+        `https://r.jina.ai/http://image.thum.io/get/width/${snapshotWidth}/noanimate/${url}`,
         { mode: 'cors', signal }
       );
       if (!res.ok) throw new Error(`Jina mirror returned ${res.status}`);
@@ -370,9 +370,11 @@ function App() {
     }
     setStatus(`Fetching snapshot for ${normalizedUrl}…`);
     const url = normalizedUrl;
+    const snapshotWidth = isPhone ? Math.max(390, state.browserWidth) : 1600;
+    const snapshotHeight = isPhone ? Math.max(844, state.browserHeight) : 900;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
-    loadSnapshotWithFallbacks(url, controller.signal)
+    loadSnapshotWithFallbacks(url, controller.signal, snapshotWidth, snapshotHeight)
       .then((bitmap) => {
         clearTimeout(timeout);
         snapshotCacheRef.current = { url, bitmap };
@@ -531,7 +533,7 @@ function App() {
 
       // Screen background
       ctx.fillStyle = frameTheme.pageBg;
-      roundedBottomRect(ctx, screenX, screenY, screenW, screenH, screenRad);
+      roundedRect(ctx, screenX, screenY, screenW, screenH, screenRad);
       ctx.fill();
 
       const statusBarH = Math.max(24, 54 * fs);
@@ -557,7 +559,7 @@ function App() {
         ctx.font = `600 ${16 * fs}px -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText('9:41', screenX + 16 * fs, screenY + statusBarH / 2);
+        ctx.fillText('9:41', screenX + 22 * fs, screenY + statusBarH / 2);
 
         // Dynamic Island centered in status bar
         const diW = screenW * 0.3;
@@ -584,8 +586,8 @@ function App() {
 
         // WiFi
         ctx.save();
-        ctx.translate(rightIconsX, iconY + 0.5 * fs);
-        ctx.scale(0.56 * fs, 0.56 * fs);
+        ctx.translate(rightIconsX - 2 * fs, iconY - 0.4 * fs);
+        ctx.scale(0.6 * fs, 0.6 * fs);
         const wifiPath = new Path2D("M12 21C13.1046 21 14 20.1046 14 19C14 17.8954 13.1046 17 12 17C10.8954 17 10 17.8954 10 19C10 20.1046 10.8954 21 12 21Z M7.75736 14.7574C10.1005 12.4142 13.8995 12.4142 16.2426 14.7574L17.6569 13.3431C14.5325 10.2188 9.46751 10.2188 6.34315 13.3431L7.75736 14.7574Z M3.51472 10.5147C8.19821 5.83124 15.8018 5.83124 20.4853 10.5147L21.8995 9.10051C16.435 3.63599 7.56497 3.63599 2.10051 9.10051L3.51472 10.5147Z");
         ctx.fill(wifiPath);
         ctx.restore();
@@ -699,7 +701,9 @@ function App() {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
       try {
-        snapshot = await loadSnapshotWithFallbacks(normalizedUrl, controller.signal);
+        const snapshotWidth = isPhone ? Math.max(390, browserWidth) : 1600;
+        const snapshotHeight = isPhone ? Math.max(844, browserHeight) : 900;
+        snapshot = await loadSnapshotWithFallbacks(normalizedUrl, controller.signal, snapshotWidth, snapshotHeight);
         snapshotCacheRef.current = { url: normalizedUrl, bitmap: snapshot };
       } catch {
         // keep fallback placeholder behavior if all providers fail
@@ -779,6 +783,7 @@ function App() {
   const phonePrevBodyRad = Math.min(54 * phonePrevScale, previewLayout.frameWidth / 4);
   const phonePrevScreenRad = Math.min(48 * phonePrevScale, phonePrevScreenW / 4);
   const phonePrevDiH = Math.max(12, 35 * phonePrevScale);
+  const phoneStatusBarH = 54 * phonePrevScale;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500/30">
@@ -1014,8 +1019,8 @@ function App() {
                       top: `${phonePrevTop}px`,
                       width: `${phonePrevScreenW}px`,
                       height: `${phonePrevScreenH}px`,
-                      borderTopLeftRadius: 0,
-                      borderTopRightRadius: 0,
+                      borderTopLeftRadius: `${phonePrevScreenRad}px`,
+                      borderTopRightRadius: `${phonePrevScreenRad}px`,
                       borderBottomLeftRadius: `${phonePrevScreenRad}px`,
                       borderBottomRightRadius: `${phonePrevScreenRad}px`,
                       overflow: 'hidden',
@@ -1026,7 +1031,7 @@ function App() {
                     <div
                       style={{
                         width: '100%',
-                        height: `${54 * phonePrevScale}px`,
+                        height: `${phoneStatusBarH}px`,
                         backgroundColor: frameTheme.topFill,
                         position: 'relative',
                         zIndex: 20,
@@ -1042,7 +1047,8 @@ function App() {
                         fontSize: `${16 * phonePrevScale}px`,
                         fontWeight: 600,
                         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif',
-                        letterSpacing: '-0.5px'
+                        letterSpacing: '-0.5px',
+                        transform: `translateX(${6 * phonePrevScale}px)`
                       }}>
                         9:41
                       </span>
@@ -1076,9 +1082,9 @@ function App() {
                       </div>
 
                       {/* Icons */}
-                      <div style={{ display: 'flex', gap: `${6 * phonePrevScale}px`, alignItems: 'center', marginRight: `${8 * phonePrevScale}px`, lineHeight: 0 }}>
+                      <div style={{ display: 'flex', gap: `${6 * phonePrevScale}px`, alignItems: 'center', marginRight: `${8 * phonePrevScale}px`, lineHeight: 0, transform: `translateY(${-0.4 * phonePrevScale}px)` }}>
                         {/* WiFi */}
-                        <svg width={`${14 * phonePrevScale}`} height={`${14 * phonePrevScale}`} viewBox="0 0 24 24" fill={isDark ? '#fff' : '#000'}>
+                        <svg width={`${15 * phonePrevScale}`} height={`${15 * phonePrevScale}`} viewBox="0 0 24 24" fill={isDark ? '#fff' : '#000'} style={{ transform: `translate(${-1 * phonePrevScale}px, ${-0.2 * phonePrevScale}px)` }}>
                           <path d="M12 21C13.1046 21 14 20.1046 14 19C14 17.8954 13.1046 17 12 17C10.8954 17 10 17.8954 10 19C10 20.1046 10.8954 21 12 21Z M7.75736 14.7574C10.1005 12.4142 13.8995 12.4142 16.2426 14.7574L17.6569 13.3431C14.5325 10.2188 9.46751 10.2188 6.34315 13.3431L7.75736 14.7574Z M3.51472 10.5147C8.19821 5.83124 15.8018 5.83124 20.4853 10.5147L21.8995 9.10051C16.435 3.63599 7.56497 3.63599 2.10051 9.10051L3.51472 10.5147Z" />
                         </svg>
                         {/* Battery */}
@@ -1095,7 +1101,7 @@ function App() {
                       style={{
                         position: 'relative',
                         width: '100%',
-                        height: `calc(100% - ${54 * phonePrevScale}px)`,
+                        height: `calc(100% - ${phoneStatusBarH}px)`,
                         overflow: 'hidden'
                       }}
                     >
