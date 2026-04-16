@@ -400,6 +400,19 @@ function App() {
     ctx.closePath();
   };
 
+  const roundedBottomRect = (ctx, x, y, w, h, r) => {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w, y);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y);
+    ctx.closePath();
+  };
+
   const exportFrame = async () => {
     setError('');
     if (!normalizedUrl) {
@@ -518,7 +531,7 @@ function App() {
 
       // Screen background
       ctx.fillStyle = frameTheme.pageBg;
-      roundedRect(ctx, screenX, screenY, screenW, screenH, screenRad);
+      roundedBottomRect(ctx, screenX, screenY, screenW, screenH, screenRad);
       ctx.fill();
 
       const statusBarH = Math.max(24, 54 * fs);
@@ -530,7 +543,9 @@ function App() {
       bodyW = screenW;
       bodyH = screenH - statusBarH;
 
-      clipBody = () => { roundedRect(ctx, bodyX, bodyY, bodyW, bodyH, screenRad); };
+      clipBody = () => {
+        roundedBottomRect(ctx, bodyX, bodyY, bodyW, bodyH, screenRad);
+      };
 
       postSnapshotDraw = () => {
         // Status Bar Top Fill
@@ -564,20 +579,20 @@ function App() {
         const iconColor = isDark ? '#ffffff' : '#000000';
         ctx.fillStyle = iconColor;
 
-        const rightIconsX = screenX + screenW - 75 * fs;
+        const rightIconsX = screenX + screenW - 70 * fs;
         const iconY = screenY + (statusBarH - 12 * fs) / 2;
 
         // WiFi
         ctx.save();
-        ctx.translate(rightIconsX, iconY + 1 * fs);
-        ctx.scale(0.8 * fs, 0.8 * fs);
+        ctx.translate(rightIconsX, iconY + 0.5 * fs);
+        ctx.scale(0.56 * fs, 0.56 * fs);
         const wifiPath = new Path2D("M12 21C13.1046 21 14 20.1046 14 19C14 17.8954 13.1046 17 12 17C10.8954 17 10 17.8954 10 19C10 20.1046 10.8954 21 12 21Z M7.75736 14.7574C10.1005 12.4142 13.8995 12.4142 16.2426 14.7574L17.6569 13.3431C14.5325 10.2188 9.46751 10.2188 6.34315 13.3431L7.75736 14.7574Z M3.51472 10.5147C8.19821 5.83124 15.8018 5.83124 20.4853 10.5147L21.8995 9.10051C16.435 3.63599 7.56497 3.63599 2.10051 9.10051L3.51472 10.5147Z");
         ctx.fill(wifiPath);
         ctx.restore();
 
         // Battery
         ctx.save();
-        ctx.translate(rightIconsX + 24 * fs, iconY);
+        ctx.translate(rightIconsX + 22 * fs, iconY + 0.5 * fs);
         ctx.scale(1.1 * fs, 1.1 * fs);
         ctx.lineWidth = 1;
         ctx.strokeStyle = iconColor;
@@ -999,7 +1014,10 @@ function App() {
                       top: `${phonePrevTop}px`,
                       width: `${phonePrevScreenW}px`,
                       height: `${phonePrevScreenH}px`,
-                      borderRadius: `${phonePrevScreenRad}px`,
+                      borderTopLeftRadius: 0,
+                      borderTopRightRadius: 0,
+                      borderBottomLeftRadius: `${phonePrevScreenRad}px`,
+                      borderBottomRightRadius: `${phonePrevScreenRad}px`,
                       overflow: 'hidden',
                       backgroundColor: frameTheme.pageBg
                     }}
@@ -1058,9 +1076,9 @@ function App() {
                       </div>
 
                       {/* Icons */}
-                      <div style={{ display: 'flex', gap: `${6 * phonePrevScale}px`, alignItems: 'center', marginRight: `${8 * phonePrevScale}px` }}>
+                      <div style={{ display: 'flex', gap: `${6 * phonePrevScale}px`, alignItems: 'center', marginRight: `${8 * phonePrevScale}px`, lineHeight: 0 }}>
                         {/* WiFi */}
-                        <svg width={`${19 * phonePrevScale}`} height={`${19 * phonePrevScale}`} viewBox="0 0 24 24" fill={isDark ? '#fff' : '#000'}>
+                        <svg width={`${14 * phonePrevScale}`} height={`${14 * phonePrevScale}`} viewBox="0 0 24 24" fill={isDark ? '#fff' : '#000'}>
                           <path d="M12 21C13.1046 21 14 20.1046 14 19C14 17.8954 13.1046 17 12 17C10.8954 17 10 17.8954 10 19C10 20.1046 10.8954 21 12 21Z M7.75736 14.7574C10.1005 12.4142 13.8995 12.4142 16.2426 14.7574L17.6569 13.3431C14.5325 10.2188 9.46751 10.2188 6.34315 13.3431L7.75736 14.7574Z M3.51472 10.5147C8.19821 5.83124 15.8018 5.83124 20.4853 10.5147L21.8995 9.10051C16.435 3.63599 7.56497 3.63599 2.10051 9.10051L3.51472 10.5147Z" />
                         </svg>
                         {/* Battery */}
@@ -1132,11 +1150,22 @@ function App() {
                     border: `1px solid ${frameTheme.border}`
                   }}
                 >
-                  <div style={{ height: state.showUrlBar ? '52px' : '34px', backgroundColor: frameTheme.shell, display: 'flex', alignItems: 'center', padding: '0 16px', gap: '12px' }}>
+                  {(() => {
+                    const urlBarHeight = state.showUrlBar ? 52 : 34;
+                    const previewScale = previewLayout.frameWidth / state.browserWidth;
+                    const scaledUrlBarHeight = urlBarHeight * previewScale;
+                    const scaledPaddingX = 16 * previewScale;
+                    const scaledGap = 12 * previewScale;
+                    const scaledDot = 10 * previewScale;
+                    const scaledDotGap = 8 * previewScale;
+                    const bodyHeight = previewLayout.frameHeight - scaledUrlBarHeight;
+                    return (
+                      <>
+                  <div style={{ height: `${scaledUrlBarHeight}px`, backgroundColor: frameTheme.shell, display: 'flex', alignItems: 'center', padding: `0 ${scaledPaddingX}px`, gap: `${scaledGap}px` }}>
                     <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-                      <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
-                      <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
+                      <span style={{ width: `${scaledDot}px`, height: `${scaledDot}px`, marginRight: `${scaledDotGap * 0.5}px` }} className="rounded-full bg-rose-400" />
+                      <span style={{ width: `${scaledDot}px`, height: `${scaledDot}px`, marginRight: `${scaledDotGap * 0.5}px` }} className="rounded-full bg-yellow-400" />
+                      <span style={{ width: `${scaledDot}px`, height: `${scaledDot}px` }} className="rounded-full bg-green-400" />
                     </div>
                     {state.showUrlBar && (
                       <div className="truncate rounded-md px-3 py-1 text-sm" style={{ width: '100%', backgroundColor: frameTheme.urlPill, color: frameTheme.urlText }}>
@@ -1144,10 +1173,10 @@ function App() {
                       </div>
                     )}
                   </div>
-                  <div style={{ position: 'relative', height: state.showUrlBar ? 'calc(100% - 52px)' : 'calc(100% - 34px)', backgroundColor: frameTheme.pageBg, overflow: 'hidden', borderBottomLeftRadius: `${state.radius}px`, borderBottomRightRadius: `${state.radius}px` }}>
+                  <div style={{ position: 'relative', height: `${bodyHeight}px`, backgroundColor: frameTheme.pageBg, overflow: 'hidden', borderBottomLeftRadius: `${state.radius}px`, borderBottomRightRadius: `${state.radius}px` }}>
                     <div style={{
                       width: `${state.browserWidth / state.zoom}px`,
-                      height: `${(state.browserHeight - (state.showUrlBar ? 52 : 34)) / state.zoom}px`,
+                      height: `${(state.browserHeight - urlBarHeight) / state.zoom}px`,
                       transform: `scale(${(previewLayout.frameWidth / state.browserWidth) * state.zoom})`,
                       transformOrigin: 'top left'
                     }}>
@@ -1175,6 +1204,9 @@ function App() {
                       )}
                     </div>
                   </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
