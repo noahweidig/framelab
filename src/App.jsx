@@ -133,31 +133,51 @@ function StatusIcons({ u, color }) {
   );
 }
 
-async function loadRemoteSnapshot(url, signal, snapshotWidth = 1600, snapshotHeight = 900) {
+async function loadThumSnapshot(url, signal, snapshotWidth, snapshotHeight) {
   // Thum.io expects the target URL as a literal path suffix, NOT percent-encoded
-  try {
-    const response = await fetch(
-      `https://image.thum.io/get/width/${snapshotWidth}/viewportWidth/${snapshotWidth}/crop/${snapshotHeight}/noanimate/${url}`,
-      { mode: 'cors', signal }
-    );
-    if (response.ok) {
-      return createImageBitmap(await response.blob());
-    }
-  } catch (e) {
-    if (e?.name === 'AbortError') throw e;
-  }
-
-  // Fallback: Microlink free-tier screenshot API
-  const mlRes = await fetch(
-    `https://api.microlink.io/?url=${encodeURIComponent(url)}&screenshot=true&meta=false&viewport.width=${snapshotWidth}&viewport.height=${snapshotHeight}&viewport.deviceScaleFactor=2&waitUntil=networkidle2`,
+  const response = await fetch(
+    `https://image.thum.io/get/width/${snapshotWidth}/viewportWidth/${snapshotWidth}/crop/${snapshotHeight}/noanimate/${url}`,
     { mode: 'cors', signal }
   );
+  if (!response.ok) throw new Error(`Thum.io returned ${response.status}`);
+  return createImageBitmap(await response.blob());
+}
+
+async function loadMicrolinkSnapshot(url, signal, snapshotWidth, snapshotHeight, mobile) {
+  const params = new URLSearchParams({
+    url,
+    screenshot: 'true',
+    meta: 'false',
+    'viewport.width': snapshotWidth,
+    'viewport.height': snapshotHeight,
+    'viewport.deviceScaleFactor': mobile ? 2 : 1,
+    'viewport.isMobile': mobile,
+    'viewport.hasTouch': mobile,
+    waitUntil: 'networkidle2'
+  });
+  const mlRes = await fetch(`https://api.microlink.io/?${params}`, { mode: 'cors', signal });
   if (!mlRes.ok) throw new Error(`Snapshot service returned ${mlRes.status}`);
   const { status, data } = await mlRes.json();
   if (status !== 'success' || !data?.screenshot?.url) throw new Error('Snapshot unavailable');
   const imgRes = await fetch(data.screenshot.url, { mode: 'cors', signal });
   if (!imgRes.ok) throw new Error(`Screenshot fetch returned ${imgRes.status}`);
   return createImageBitmap(await imgRes.blob());
+}
+
+// Phone frames need real mobile emulation (Microlink); thum.io renders wider than the 390px viewport.
+async function loadRemoteSnapshot(url, signal, snapshotWidth = 1600, snapshotHeight = 900) {
+  const mobile = snapshotWidth < 600;
+  const loaders = [
+    () => loadThumSnapshot(url, signal, snapshotWidth, snapshotHeight),
+    () => loadMicrolinkSnapshot(url, signal, snapshotWidth, snapshotHeight, mobile)
+  ];
+  if (mobile) loaders.reverse();
+  try {
+    return await loaders[0]();
+  } catch (e) {
+    if (e?.name === 'AbortError') throw e;
+    return loaders[1]();
+  }
 }
 
 function normalizeUrl(input) {
@@ -177,6 +197,7 @@ function normalizeUrl(input) {
 async function loadSnapshotWithFallbacks(url, signal, snapshotWidth = 1600, snapshotHeight = 900) {
   const providers = [
     async () => {
+      if (snapshotWidth < 600) throw new Error('Backend proxy has no mobile emulation');
       const backendRes = await fetch(
         `/api/snapshot?url=${encodeURIComponent(url)}&w=${snapshotWidth}&h=${snapshotHeight}`,
         { signal }

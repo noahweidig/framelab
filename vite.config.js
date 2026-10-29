@@ -51,11 +51,10 @@ function backendSnapshotProxyPlugin() {
           return;
         }
 
-        const providers = [
-          `https://image.thum.io/get/width/1600/noanimate/${target}`,
-          `https://s.wordpress.com/mshots/v1/${encodeURIComponent(target)}?w=1600`,
-          `https://r.jina.ai/http://image.thum.io/get/width/1600/noanimate/${target}`
-        ];
+        const w = Number(reqUrl.searchParams.get('w')) || 1600;
+        const h = Number(reqUrl.searchParams.get('h')) || 900;
+        const thum = `https://image.thum.io/get/width/${w}/viewportWidth/${w}/crop/${h}/noanimate/${target}`;
+        const providers = [thum, `https://s.wordpress.com/mshots/v1/${encodeURIComponent(target)}?w=${w}`, `https://r.jina.ai/http://${thum.replace(/^https?:\/\//, '')}`];
 
         let lastError = 'No snapshot provider response';
 
