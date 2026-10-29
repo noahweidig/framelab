@@ -47,6 +47,92 @@ const DEFAULTS = {
   exportQuality: 0.92
 };
 
+const rr = (x, y, w, h, r) =>
+  `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
+
+function fanPath(cx, cy, r1, r2, deg) {
+  const a = (deg * Math.PI) / 180;
+  const pt = (r, side) => `${(cx + side * r * Math.sin(a)).toFixed(2)} ${(cy - r * Math.cos(a)).toFixed(2)}`;
+  const inner = r1 > 0 ? `L${pt(r1, 1)}A${r1} ${r1} 0 0 0 ${pt(r1, -1)}` : `L${cx} ${cy}`;
+  return `M${pt(r2, -1)}A${r2} ${r2} 0 0 1 ${pt(r2, 1)}${inner}Z`;
+}
+
+const STATUS_ICON_GAP = 5;
+const STATUS_ICONS = [
+  {
+    w: 17,
+    h: 12,
+    parts: [
+      { d: [rr(0, 7.5, 3, 4.5, 1), rr(4.5, 5, 3, 7, 1), rr(9, 2.5, 3, 9.5, 1), rr(13.5, 0, 3, 12, 1)].join(''), fill: true }
+    ]
+  },
+  {
+    w: 17,
+    h: 12,
+    parts: [
+      {
+        d: [fanPath(8.5, 11.9, 8.6, 11.6, 45), fanPath(8.5, 11.9, 4.9, 7.6, 45), fanPath(8.5, 11.9, 0, 3.6, 45)].join(''),
+        fill: true
+      }
+    ]
+  },
+  {
+    w: 27,
+    h: 13,
+    parts: [
+      { d: rr(0.5, 0.5, 23, 12, 3.8), stroke: 1, opacity: 0.35 },
+      { d: rr(2, 2, 20, 9, 2.5), fill: true },
+      { d: 'M24.9 4.3C25.8 4.6 26.4 5.4 26.4 6.5C26.4 7.6 25.8 8.4 24.9 8.7Z', fill: true, opacity: 0.4 }
+    ]
+  }
+];
+const STATUS_ICONS_W = STATUS_ICONS.reduce((n, i) => n + i.w, 0) + STATUS_ICON_GAP * (STATUS_ICONS.length - 1);
+const STATUS_ICON_PATHS = STATUS_ICONS.map((icon) => ({ ...icon, parts: icon.parts.map((p) => ({ ...p, path: new Path2D(p.d) })) }));
+
+function drawStatusIcons(ctx, rightX, centerY, u, color) {
+  let x = rightX - STATUS_ICONS_W * u;
+  for (const icon of STATUS_ICON_PATHS) {
+    ctx.save();
+    ctx.translate(x, centerY - (icon.h * u) / 2);
+    ctx.scale(u, u);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    ctx.lineJoin = 'round';
+    for (const part of icon.parts) {
+      ctx.globalAlpha = part.opacity ?? 1;
+      if (part.fill) ctx.fill(part.path);
+      if (part.stroke) {
+        ctx.lineWidth = part.stroke;
+        ctx.stroke(part.path);
+      }
+    }
+    ctx.restore();
+    x += (icon.w + STATUS_ICON_GAP) * u;
+  }
+}
+
+function StatusIcons({ u, color }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: `${STATUS_ICON_GAP * u}px`, lineHeight: 0 }}>
+      {STATUS_ICONS.map((icon, i) => (
+        <svg key={i} width={icon.w * u} height={icon.h * u} viewBox={`0 0 ${icon.w} ${icon.h}`} aria-hidden="true">
+          {icon.parts.map((part, j) => (
+            <path
+              key={j}
+              d={part.d}
+              fill={part.fill ? color : 'none'}
+              stroke={part.stroke ? color : 'none'}
+              strokeWidth={part.stroke}
+              strokeLinejoin="round"
+              opacity={part.opacity ?? 1}
+            />
+          ))}
+        </svg>
+      ))}
+    </div>
+  );
+}
+
 async function loadRemoteSnapshot(url, signal, snapshotWidth = 1600, snapshotHeight = 900) {
   // Thum.io expects the target URL as a literal path suffix, NOT percent-encoded
   try {
@@ -586,45 +672,7 @@ function App() {
         ctx.arc(diX + diH * 0.4 + dotSize / 2, diY + diH / 2, dotSize / 2, 0, Math.PI * 2);
         ctx.fill();
 
-        // Icons
-        const iconColor = isDark ? '#ffffff' : '#000000';
-        ctx.fillStyle = iconColor;
-
-        const rightIconsX = screenX + screenW - 70 * fs;
-        const iconY = screenY + (statusBarH - 12 * fs) / 2;
-
-        // WiFi
-        ctx.save();
-        ctx.translate(rightIconsX - 2 * fs, iconY - 0.4 * fs);
-        ctx.scale(0.6 * fs, 0.6 * fs);
-        const wifiPath = new Path2D("M12 21C13.1046 21 14 20.1046 14 19C14 17.8954 13.1046 17 12 17C10.8954 17 10 17.8954 10 19C10 20.1046 10.8954 21 12 21Z M7.75736 14.7574C10.1005 12.4142 13.8995 12.4142 16.2426 14.7574L17.6569 13.3431C14.5325 10.2188 9.46751 10.2188 6.34315 13.3431L7.75736 14.7574Z M3.51472 10.5147C8.19821 5.83124 15.8018 5.83124 20.4853 10.5147L21.8995 9.10051C16.435 3.63599 7.56497 3.63599 2.10051 9.10051L3.51472 10.5147Z");
-        ctx.fill(wifiPath);
-        ctx.restore();
-
-        // Battery
-        ctx.save();
-        ctx.translate(rightIconsX + 22 * fs, iconY + 0.5 * fs);
-        ctx.scale(1.1 * fs, 1.1 * fs);
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = iconColor;
-        ctx.lineJoin = "round";
-        const batBody = new Path2D();
-        batBody.roundRect(0.5, 0.5, 18, 9, 4);
-        ctx.stroke(batBody);
-
-        ctx.fillStyle = iconColor;
-        const batFill = new Path2D();
-        batFill.roundRect(2, 2, 12, 6, 2);
-        ctx.fill(batFill);
-
-        ctx.beginPath();
-        ctx.moveTo(20, 3.5);
-        ctx.lineTo(21, 3.5);
-        ctx.quadraticCurveTo(21.5, 4, 21.5, 5);
-        ctx.quadraticCurveTo(21.5, 6, 21, 6.5);
-        ctx.lineTo(20, 6.5);
-        ctx.stroke();
-        ctx.restore();
+        drawStatusIcons(ctx, screenX + screenW - 24 * fs, screenY + statusBarH / 2, fs, isDark ? '#ffffff' : '#000000');
 
         ctx.restore();
       };
@@ -1097,18 +1145,8 @@ function App() {
                         }} />
                       </div>
 
-                      {/* Icons */}
-                      <div style={{ display: 'flex', gap: `${6 * phonePrevScale}px`, alignItems: 'center', marginRight: `${8 * phonePrevScale}px`, lineHeight: 0, transform: `translateY(${-0.4 * phonePrevScale}px)` }}>
-                        {/* WiFi */}
-                        <svg width={`${15 * phonePrevScale}`} height={`${15 * phonePrevScale}`} viewBox="0 0 24 24" fill={isDark ? '#fff' : '#000'} style={{ transform: `translate(${-1 * phonePrevScale}px, ${-0.2 * phonePrevScale}px)` }}>
-                          <path d="M12 21C13.1046 21 14 20.1046 14 19C14 17.8954 13.1046 17 12 17C10.8954 17 10 17.8954 10 19C10 20.1046 10.8954 21 12 21Z M7.75736 14.7574C10.1005 12.4142 13.8995 12.4142 16.2426 14.7574L17.6569 13.3431C14.5325 10.2188 9.46751 10.2188 6.34315 13.3431L7.75736 14.7574Z M3.51472 10.5147C8.19821 5.83124 15.8018 5.83124 20.4853 10.5147L21.8995 9.10051C16.435 3.63599 7.56497 3.63599 2.10051 9.10051L3.51472 10.5147Z" />
-                        </svg>
-                        {/* Battery */}
-                        <svg width={`${24 * phonePrevScale}`} height={`${11 * phonePrevScale}`} viewBox="0 0 24 11" fill="none" stroke={isDark ? '#fff' : '#000'}>
-                          <rect x="0.5" y="0.5" width="20" height="10" rx="4" strokeWidth="1"/>
-                          <rect x="2" y="2" width="13" height="7" rx="2" fill={isDark ? '#fff' : '#000'} stroke="none"/>
-                          <path d="M22 4C23.1046 4 24 4.89543 24 6C24 7.10457 23.1046 8 22 8" strokeWidth="1"/>
-                        </svg>
+                      <div style={{ marginRight: `${8 * phonePrevScale}px` }}>
+                        <StatusIcons u={phonePrevScale} color={isDark ? '#fff' : '#000'} />
                       </div>
                     </div>
 
