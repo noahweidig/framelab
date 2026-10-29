@@ -21,7 +21,7 @@ const PHONE_BEZELS = { side: 6, top: 6, bottom: 6 };
 const DEFAULTS = {
   uploadedImage: null,
   url: 'https://noahweidig.com',
-  mode: 'solid',
+  mode: 'gradient',
   bgSolid: '#111827',
   bgA: '#0f172a',
   bgB: '#6d28d9',
