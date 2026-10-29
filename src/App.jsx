@@ -729,7 +729,8 @@ function App() {
     if (snapshot) {
       const isUpload = snapshotCacheRef.current?.key === 'uploaded';
       const useAnchor = state.uploadSizing === 'anchor' && isUpload;
-      const { x: anchorX, y: anchorY } = getAnchorAlignment(useAnchor ? state.uploadAnchor : isUpload ? 'center' : 'top');
+      const defaultAnchor = isUpload ? 'center' : 'top';
+      const { x: anchorX, y: anchorY } = getAnchorAlignment(useAnchor ? state.uploadAnchor : defaultAnchor);
 
       const srcRatio = snapshot.width / snapshot.height;
       const destRatio = bodyW / bodyH;
