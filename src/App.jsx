@@ -47,11 +47,11 @@ const DEFAULTS = {
   exportQuality: 0.92
 };
 
-async function loadRemoteSnapshot(url, signal, snapshotWidth = 1600) {
+async function loadRemoteSnapshot(url, signal, snapshotWidth = 1600, snapshotHeight = 900) {
   // Thum.io expects the target URL as a literal path suffix, NOT percent-encoded
   try {
     const response = await fetch(
-      `https://image.thum.io/get/width/${snapshotWidth}/noanimate/${url}`,
+      `https://image.thum.io/get/width/${snapshotWidth}/viewportWidth/${snapshotWidth}/crop/${snapshotHeight}/noanimate/${url}`,
       { mode: 'cors', signal }
     );
     if (response.ok) {
@@ -63,7 +63,7 @@ async function loadRemoteSnapshot(url, signal, snapshotWidth = 1600) {
 
   // Fallback: Microlink free-tier screenshot API
   const mlRes = await fetch(
-    `https://api.microlink.io/?url=${encodeURIComponent(url)}&screenshot=true&meta=false`,
+    `https://api.microlink.io/?url=${encodeURIComponent(url)}&screenshot=true&meta=false&viewport.width=${snapshotWidth}&viewport.height=${snapshotHeight}&viewport.deviceScaleFactor=2&waitUntil=networkidle2`,
     { mode: 'cors', signal }
   );
   if (!mlRes.ok) throw new Error(`Snapshot service returned ${mlRes.status}`);
@@ -98,7 +98,7 @@ async function loadSnapshotWithFallbacks(url, signal, snapshotWidth = 1600, snap
       if (!backendRes.ok) throw new Error(`Backend snapshot returned ${backendRes.status}`);
       return createImageBitmap(await backendRes.blob());
     },
-    () => loadRemoteSnapshot(url, signal, snapshotWidth),
+    () => loadRemoteSnapshot(url, signal, snapshotWidth, snapshotHeight),
     async () => {
       const res = await fetch(
         `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=${snapshotWidth}`,
@@ -727,8 +727,9 @@ function App() {
       }
     }
     if (snapshot) {
-      const useAnchor = state.uploadSizing === 'anchor' && snapshotCacheRef.current?.key === 'uploaded';
-      const { x: anchorX, y: anchorY } = getAnchorAlignment(useAnchor ? state.uploadAnchor : 'center');
+      const isUpload = snapshotCacheRef.current?.key === 'uploaded';
+      const useAnchor = state.uploadSizing === 'anchor' && isUpload;
+      const { x: anchorX, y: anchorY } = getAnchorAlignment(useAnchor ? state.uploadAnchor : isUpload ? 'center' : 'top');
 
       const srcRatio = snapshot.width / snapshot.height;
       const destRatio = bodyW / bodyH;
